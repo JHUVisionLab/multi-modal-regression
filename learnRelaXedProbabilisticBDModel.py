@@ -25,7 +25,7 @@ import pickle
 import argparse
 from tensorboardX import SummaryWriter
 
-parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
+parser = argparse.ArgumentParser(description='RelXed Probabilistic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--render_path', type=str, default='data/renderforcnn/')
 parser.add_argument('--augmented_path', type=str, default='data/augmented2/')
@@ -150,9 +150,15 @@ def testing():
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
 		output = model(xdata, label)
-		ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
-		ypred_res = output[1].data.cpu().numpy()
-		ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
+		if not args.multires:
+			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+			ypred_res = output[1].data.cpu().numpy()
+			tmp_ypred = kmeans_dict[ypred_bin, :] + ypred_res
+		else:
+			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+			ypred_res = output[1].data.cpu().numpy()
+			tmp_ypred = np.stack([kmeans_dict[ypred_bin[i]] + ypred_res[i, ypred_bin[i], :] for i in range(ypred_bin.shape[0])])
+		ypred.append(tmp_ypred)
 		ytrue.append(sample['ydata'].numpy())
 		labels.append(sample['label'].numpy())
 		del xdata, label, output, sample
