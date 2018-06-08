@@ -66,6 +66,35 @@ def get_error(ygt, yhat):
 	return acc, medErr, az_error
 
 
+# function to get angle error between gt and predicted viewpoints
+def get_error2(ygt, yhat, labels, num):
+	N = ygt.shape[0]
+	err = np.zeros(N)
+	for i in range(N):
+		# read the 3-dim axis-angle vectors
+		v1 = ygt[i]
+		v2 = yhat[i]
+		# get correponding rotation matrices
+		R1 = get_R(v1)
+		R2 = get_R(v2)
+		# compute \|log(R_1^T R_2)\|_F/\sqrt(2) using Rodrigues' formula
+		R = np.dot(R1.T, R2)
+		tR = np.trace(R)
+		theta = np.arccos(np.clip(0.5*(tR-1), -1.0, 1.0))   # clipping to avoid numerical issues
+		atheta = np.abs(theta)
+		# print('i:{0}, tR:{1}, theta:{2}'.format(i, tR, theta, atheta))
+		err[i] = np.rad2deg(atheta)
+	# print(labels.shape, err.shape)
+	labels = np.squeeze(labels)
+	medErr = np.zeros(num)
+	for i in range(num):
+		ind = (labels == i)
+		# print(ind.shape)
+		medErr[i] = np.median(err[ind])
+	# print('Median Angle Error: ', medErr)
+	return np.mean(medErr)
+
+
 """
 Pose Models
 """
