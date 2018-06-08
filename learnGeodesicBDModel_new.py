@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from dataGenerators import Pascal3dAll, my_collate
 from binDeltaGenerators import GBDGenerator
 from axisAngle import get_error2, geodesic_loss
-from binDeltaModels import OneBinDeltaModel
+from binDeltaModels import OneBinDeltaModel, OneDeltaPerBinModel
 from binDeltaLosses import SimpleLoss, GeodesicLoss
 from helperFunctions import classes
 
@@ -37,9 +37,11 @@ parser.add_argument('--feature_network', type=str, default='resnet')
 parser.add_argument('--N0', type=int, default=2048)
 parser.add_argument('--N1', type=int, default=1000)
 parser.add_argument('--N2', type=int, default=500)
+parser.add_argument('--N3', type=int, default=100)
 parser.add_argument('--init_lr', type=float, default=1e-4)
 parser.add_argument('--num_epochs', type=int, default=3)
 parser.add_argument('--max_iterations', type=float, default=np.inf)
+parser.add_argument('--multires', type=bool, default=False)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -81,7 +83,11 @@ else:
 	max_iterations = args.max_iterations
 
 # my_model
-model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+if not args.multires:
+	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+else:
+	model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
+
 # print(model)
 # loss and optimizer
 optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
