@@ -181,7 +181,6 @@ def training():
 
 def testing():
 	model.eval()
-	bar = progressbar.ProgressBar(max_value=len(test_loader))
 	ypred = []
 	ytrue = []
 	labels = []
@@ -194,7 +193,6 @@ def testing():
 		ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
 		ytrue.append(sample['ydata'].numpy())
 		labels.append(sample['label'].numpy())
-		bar.update(i)
 		del xdata, label, output, sample
 		gc.collect()
 	ypred = np.concatenate(ypred)
