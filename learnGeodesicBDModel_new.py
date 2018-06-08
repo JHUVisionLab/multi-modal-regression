@@ -39,6 +39,7 @@ parser.add_argument('--N1', type=int, default=1000)
 parser.add_argument('--N2', type=int, default=500)
 parser.add_argument('--init_lr', type=float, default=1e-4)
 parser.add_argument('--num_epochs', type=int, default=3)
+parser.add_argument('--max_iterations', type=float, default=np.inf)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -74,6 +75,10 @@ render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=Tru
 test_loader = DataLoader(test_data, batch_size=32, collate_fn=my_collate)
 print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
 
+if np.isinf(args.max_iterations):
+	max_iterations = min(len(real_loader), len(render_loader))
+else:
+	max_iterations = args.max_iterations
 
 # my_model
 model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
@@ -91,7 +96,7 @@ val_loss = []
 def training_init():
 	global count, val_loss
 	model.train()
-	bar = progressbar.ProgressBar(max_value=len(render_loader))
+	bar = progressbar.ProgressBar(max_value=max_iterations)
 	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
 		# forward steps
 		xdata_real = Variable(sample_real['xdata'].cuda())
@@ -109,7 +114,6 @@ def training_init():
 		loss.backward()
 		optimizer.step()
 		# store
-		bar.update(i)
 		writer.add_scalar('train_loss', loss.item(), count)
 		if i % 1000 == 0:
 			ytest, yhat_test, test_labels = testing()
@@ -121,6 +125,10 @@ def training_init():
 		# cleanup
 		del xdata_real, xdata_render, label_real, label_render, ydata_real, ydata_render
 		del output_real, output_render, loss_real, loss_render, sample_real, sample_render, loss
+		bar.update(i)
+		# stop
+		if i == max_iterations:
+			break
 	render_loader.dataset.shuffle_images()
 	real_loader.dataset.shuffle_images()
 
@@ -128,7 +136,7 @@ def training_init():
 def training():
 	global count, val_loss
 	model.train()
-	bar = progressbar.ProgressBar(max_value=len(render_loader))
+	bar = progressbar.ProgressBar(max_value=max_iterations)
 	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
 		# forward steps
 		xdata_real = Variable(sample_real['xdata'].cuda())
@@ -146,7 +154,6 @@ def training():
 		loss.backward()
 		optimizer.step()
 		# store
-		bar.update(i)
 		writer.add_scalar('train_loss', loss.item(), count)
 		if i % 1000 == 0:
 			ytest, yhat_test, test_labels = testing()
@@ -158,6 +165,10 @@ def training():
 		# cleanup
 		del xdata_real, xdata_render, label_real, label_render, ydata_real, ydata_render
 		del output_real, output_render, loss_real, loss_render, sample_real, sample_render, loss
+		bar.update(i)
+		# stop
+		if i == max_iterations:
+			break
 	render_loader.dataset.shuffle_images()
 	real_loader.dataset.shuffle_images()
 
