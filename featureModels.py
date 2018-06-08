@@ -10,7 +10,7 @@ from torchvision import models
 # feature model based on resnet architecture
 class resnet_model(nn.Module):
 
-	def __init__(self, model_type='resnet50', layer_type='layer3'):
+	def __init__(self, model_type='resnet50', layer_type='layer4'):
 		super().__init__()
 		# get model
 		if model_type == 'resnet50':
@@ -38,4 +38,30 @@ class resnet_model(nn.Module):
 		x = self.features(x)
 		x = self.avgpool(x)
 		x = x.view(x.size(0), -1)
+		return x
+
+
+class vgg_model(nn.Module):
+
+	def __init__(self, model_type='vgg13', layer_type='fc6'):
+		super().__init__()
+		# get model
+		if model_type == 'vgg13':
+			self.original_model = models.vgg13_bn(pretrained=True)
+		elif model_type == 'vgg16':
+			self.original_model = models.vgg16_bn(pretrained=True)
+		else:
+			raise NameError('Unknown model_type passed')
+		self.features = self.original_model.features
+		if layer_type == 'fc6':
+			self.classifier = nn.Sequential(*list(self.original_model.classifier.children())[:2])
+		elif layer_type == 'fc7':
+			self.classifier = nn.Sequential(*list(self.original_model.classifier.children())[:-2])
+		else:
+			raise NameError('Uknown layer_type passed')
+
+	def forward(self, x):
+		x = self.features(x)
+		x = x.view(x.size(0), -1)
+		x = self.classifier(x)
 		return x
