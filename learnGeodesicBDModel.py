@@ -12,7 +12,8 @@ from torch.utils.data import DataLoader
 from dataGenerators import MultibinImages, Pascal3dAll, my_collate
 from featureModels import resnet_model
 from axisAngle import get_error, geodesic_loss
-from binDeltaModels import bin_3layer, res_3layer, loss_m1, loss_m0
+from binDeltaModels import bin_3layer, res_3layer
+from binDeltaLosses import loss_m1, loss_m0
 from helperFunctions import classes
 
 import numpy as np
