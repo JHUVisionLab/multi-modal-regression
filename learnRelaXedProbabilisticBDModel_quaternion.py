@@ -60,7 +60,7 @@ kmeans_dict = convert_dictionary(kmeans.cluster_centers_)
 num_clusters = kmeans.n_clusters
 
 # relevant variables
-ndim = 3
+ndim = 4
 num_classes = len(classes)
 
 if not args.multires:
