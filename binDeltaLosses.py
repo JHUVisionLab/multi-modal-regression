@@ -1,9 +1,11 @@
 import pickle
+import numpy as np
 import torch
 from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 from quaternion import convert_dictionary
+from helperFunctions import eps
 
 
 """
@@ -135,6 +137,37 @@ class RelaXedProbabilisticMultiresLossQ(RelaXedProbabilisticLossQ):
 		y = self.cluster_centers + ypred[1]
 		l2 = torch.stack([self.my_loss(ytrue[1], torch.squeeze(y.index_select(1, Variable(i*torch.ones(1).long().cuda())))) for i in range(self.n_clusters)])
 		l2 = torch.mean(torch.sum(torch.mul(F.softmax(ypred[0], dim=1), torch.t(l2)), dim=1))
+		return torch.add(l1, self.alpha, l2)
+
+
+class RiemannianLoss(nn.Module):
+	def __init__(self, alpha, pose_dict):
+		super().__init__()
+		self.alpha = alpha
+		self.key_poses = torch.from_numpy(pose_dict).float().cuda()
+		self.ce = nn.CrossEntropyLoss().cuda()
+		proj = np.array([[0,0,0,0,0,-1,0,1,0], [0,0,1,0,0,0,-1,0,0], [0,-1,0,1,0,0,0,0,0]])
+		self.proj = torch.from_numpy(proj).float().cuda()
+		self.Id = torch.eye(3).float().cuda()
+
+	def my_loss(self, ypred, ytrue):
+		# geodesic loss between predicted and gt rotations
+		tmp = torch.stack([torch.trace(torch.mm(ypred[i].t(), ytrue[i])) for i in range(ytrue.size(0))])
+		angle = torch.acos(torch.clamp((tmp - 1.0) / 2, -1 + eps, 1 - eps))
+		return torch.mean(angle)
+
+	def forward(self, ypred, ytrue):
+		# ytrue = (ydata_bin, ydata_rot)
+		# ypred = (score, residual)
+		l1 = self.ce(ypred[0], ytrue[0])
+		_, ind = torch.max(ypred[0], dim=1)
+		yres = ypred[1]
+		angle = torch.norm(yres, 2, 1)
+		axis = F.normalize(yres)
+		axis = torch.mm(axis, self.proj).view(-1, 3, 3)
+		y = torch.stack([self.Id + torch.sin(angle[i])*axis[i] + (1.0 - torch.cos(angle[i]))*torch.mm(axis[i], axis[i]) for i in range(angle.size(0))])
+		y = torch.bmm(torch.index_select(self.key_poses, 0, ind), y)
+		l2 = self.my_loss(y, ytrue[1])
 		return torch.add(l1, self.alpha, l2)
 
 
