@@ -70,7 +70,7 @@ criterion2 = GeodesicLoss(1.0, kmeans_file, geodesic_loss().cuda())
 # datasets
 real_data = GBDGeneratorQ(args.augmented_path, 'real', kmeans_file)
 render_data = GBDGeneratorQ(args.render_path, 'render', kmeans_file)
-test_data = Pascal3dAll(args.pascal3d_path, 'test')
+test_data = Pascal3dAll(args.pascal3d_path, 'test', 'quaternion')
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
