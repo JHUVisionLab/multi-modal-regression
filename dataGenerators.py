@@ -7,8 +7,9 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from helperFunctions import parse_name, rotation_matrix, classes
+from helperFunctions import parse_name, rotation_matrix, classes, eps
 from axisAngle import get_y, get_R
+from quaternion import get_y as get_quaternion
 
 from PIL import Image
 import numpy as np
@@ -23,11 +24,12 @@ preprocess_real = transforms.Compose([transforms.ToTensor(), normalize])
 
 
 class ImagesAll(Dataset):
-	def __init__(self, db_path, db_type):
+	def __init__(self, db_path, db_type, ydata_type='axis_angle'):
 		self.db_path = db_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.db_type = db_type
+		self.ydata_type = ydata_type
 		self.list_image_names = []
 		for i in range(self.num_classes):
 			tmp = spio.loadmat(os.path.join(self.db_path, self.classes[i] + '_info'), squeeze_me=True)
@@ -58,7 +60,13 @@ class ImagesAll(Dataset):
 				R = rotation_matrix(az, el, -ct)
 			else:
 				raise NameError('Unknown db_type passed')
-			ydata.append(torch.from_numpy(get_y(R)).float())
+			if self.ydata_type == 'axis_angle':
+				tmpy = get_y(R)
+			elif self.ydata_type == 'quaternion':
+				tmpy = get_quaternion(R)
+			else:
+				raise NameError('Uknown ydata_type passed')
+			ydata.append(torch.from_numpy(tmpy).float())
 		xdata = torch.stack(xdata)
 		ydata = torch.stack(ydata)
 		label = torch.stack(label)
@@ -70,12 +78,13 @@ class ImagesAll(Dataset):
 
 
 class Pascal3dAll(Dataset):
-	def __init__(self, db_path, db_type):
+	def __init__(self, db_path, db_type, ydata_type='axis_angle'):
 		super().__init__()
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.db_path = db_path
 		self.db_type = db_type
+		self.ydata_type = ydata_type
 		self.list_image_names = []
 		self.labels = []
 		for i in range(self.num_classes):
@@ -98,7 +107,14 @@ class Pascal3dAll(Dataset):
 		image_path = os.path.join(self.db_path, self.classes[image_label], image_name)
 		tmp = spio.loadmat(image_path, verify_compressed_data_integrity=False)
 		xdata = tmp['xdata']
-		ydata = tmp['ydata']
+		if self.ydata_type == 'axis_angle':
+			ydata = tmp['ydata']
+		elif self.ydata_type == 'quaternion':
+			angle = np.linalg.norm(tmp['ydata'], 2, 1, True)
+			axis = tmp['ydata'] / np.maximum(eps, angle)
+			ydata = np.concatenate([np.cos(angle/2.0), np.sin(angle/2.0) * axis], axis=1)
+		else:
+			raise NameError('Uknown ydata_type passed')
 		label = image_label * np.ones((ydata.shape[0], 1))
 		# get torch tensors from this data
 		xdata = torch.stack([preprocess_real(xdata[i]) for i in range(xdata.shape[0])]).float()
