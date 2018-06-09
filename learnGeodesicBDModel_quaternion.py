@@ -12,7 +12,7 @@ from dataGenerators import Pascal3dAll, my_collate
 from binDeltaGenerators import GBDGeneratorQ
 from quaternion import get_error2, geodesic_loss, convert_dictionary
 from binDeltaModels import OneBinDeltaModel, OneDeltaPerBinModel
-from binDeltaLosses import SimpleLoss, GeodesicLoss
+from binDeltaLosses import SimpleLoss, GeodesicLossQ
 from helperFunctions import classes
 
 import numpy as np
@@ -64,7 +64,7 @@ ndim = 4
 num_classes = len(classes)
 
 criterion1 = SimpleLoss(1.0)
-criterion2 = GeodesicLoss(1.0, kmeans_file, geodesic_loss().cuda())
+criterion2 = GeodesicLossQ(1.0, kmeans_file, geodesic_loss().cuda())
 
 # DATA
 # datasets
