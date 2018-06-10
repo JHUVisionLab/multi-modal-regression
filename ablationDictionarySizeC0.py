@@ -26,8 +26,8 @@ import sys
 import pickle
 from tensorboardX import SummaryWriter
 
-if len(sys.argv) > 1:
-	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
+os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
+dict_size = sys.argv[2]
 
 # relevant paths
 render_path = 'data/renderforcnn/'
@@ -35,12 +35,12 @@ augmented_path = 'data/augmented2/'
 pascal3d_path = 'data/original'
 
 # kmeans info
-kmeans_file = 'data/kmeans_dictionary_axis_angle_100.pkl'
+kmeans_file = 'data/kmeans_dictionary_axis_angle_' + dict_size + '.pkl'
 kmeans = pickle.load(open(kmeans_file, 'rb'))
 
 
 # save stuff here
-save_str = 'c0_k100_1'
+save_str = 'c0_k' + dict_size
 results_file = os.path.join('results', save_str)
 model_file = os.path.join('models', save_str + '.tar')
 plots_file = os.path.join('plots', save_str)
@@ -140,7 +140,6 @@ def training():
 
 def testing():
 	model.eval()
-	bar = progressbar.ProgressBar(max_value=len(test_loader))
 	ypred = []
 	ytrue = []
 	labels = []
@@ -152,9 +151,7 @@ def testing():
 		ypred.append(kmeans_dict[ypred_bin, :])
 		ytrue.append(sample['ydata'].numpy())
 		labels.append(sample['label'].numpy())
-		bar.update(i)
 		del xdata, label, output, sample
-		gc.collect()
 	ypred = np.concatenate(ypred)
 	ytrue = np.concatenate(ytrue)
 	labels = np.concatenate(labels)
