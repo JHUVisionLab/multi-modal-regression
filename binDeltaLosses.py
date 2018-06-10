@@ -102,7 +102,7 @@ class RelaXedLoss(nn.Module):
 		l1 = self.kl(F.log_softmax(ypred[0], dim=1), ytrue[0])
 		_, ind = torch.max(ypred[0], dim=1)
 		y = torch.index_select(self.cluster_centers_, 0, ind)
-		l2 = self.mse(y+ypred[1], ytrue[1])
+		l2 = self.my_loss(y+ypred[1], ytrue[1])
 		return torch.add(l1, self.alpha, l2)
 
 
