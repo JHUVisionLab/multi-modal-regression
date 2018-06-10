@@ -72,6 +72,40 @@ class GeodesicLossQ(nn.Module):
 		return torch.add(l1, self.alpha, l2)
 
 
+class SimpleRelaXedLoss(nn.Module):
+	def __init__(self, alpha):
+		super().__init__()
+		self.alpha = alpha
+		self.mse = nn.MSELoss().cuda()
+		self.kl = nn.KLDivLoss().cuda()
+
+	def forward(self, ypred, ytrue):
+		# ytrue = [ydata_bin, ydata_res]
+		# ypred = [score, residual]
+		l1 = self.kl(F.log_softmax(ypred[0], dim=1), ytrue[0])
+		l2 = self.mse(ypred[1], ytrue[1])
+		return torch.add(l1, self.alpha, l2)
+
+
+class RelaXedLoss(nn.Module):
+	def __init__(self, alpha, kmeans_file, my_loss):
+		super().__init__()
+		self.alpha = alpha
+		kmeans = pickle.load(open(kmeans_file, 'rb'))
+		self.cluster_centers_ = Variable(torch.from_numpy(kmeans.cluster_centers_).float()).cuda()
+		self.my_loss = my_loss
+		self.kl = nn.KLDivLoss().cuda()
+
+	def forward(self, ypred, ytrue):
+		# ytrue = (ydata_label, ydata)
+		# ypred = (score, residual)
+		l1 = self.kl(F.log_softmax(ypred[0], dim=1), ytrue[0])
+		_, ind = torch.max(ypred[0], dim=1)
+		y = torch.index_select(self.cluster_centers_, 0, ind)
+		l2 = self.mse(y+ypred[1], ytrue[1])
+		return torch.add(l1, self.alpha, l2)
+
+
 class RelaXedProbabilisticLoss(nn.Module):
 	def __init__(self, alpha, kmeans_file, my_loss):
 		super().__init__()
