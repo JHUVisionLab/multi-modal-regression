@@ -9,10 +9,10 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
 from dataGenerators import Pascal3dAll, my_collate
-from binDeltaGenerators import XPBDGenerator
+from binDeltaGenerators import GBDGenerator
 from axisAngle import get_error2, geodesic_loss
 from binDeltaModels import OneBinDeltaModel, ProbabilisticOneDeltaPerBinModel
-from binDeltaLosses import RelaXedProbabilisticLoss, RelaXedProbabilisticMultiresLoss
+from binDeltaLosses import ProbabilisticLoss, ProbabilisticMultiresLoss
 from helperFunctions import classes
 
 import numpy as np
@@ -25,7 +25,7 @@ import pickle
 import argparse
 from tensorboardX import SummaryWriter
 
-parser = argparse.ArgumentParser(description='RelaXed Probabilistic Bin & Delta Model')
+parser = argparse.ArgumentParser(description='Probabilistic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--render_path', type=str, default='data/renderforcnn/')
 parser.add_argument('--augmented_path', type=str, default='data/augmented2/')
@@ -64,14 +64,14 @@ ndim = 3
 num_classes = len(classes)
 
 if not args.multires:
-	criterion = RelaXedProbabilisticLoss(1.0, kmeans_file, geodesic_loss(reduce=False).cuda())
+	criterion = ProbabilisticLoss(1.0, kmeans_file, geodesic_loss(reduce=False).cuda())
 else:
-	criterion = RelaXedProbabilisticMultiresLoss(1.0, kmeans_file, geodesic_loss(reduce=False).cuda())
+	criterion = ProbabilisticMultiresLoss(1.0, kmeans_file, geodesic_loss(reduce=False).cuda())
 
 # DATA
 # datasets
-real_data = XPBDGenerator(args.augmented_path, 'real', kmeans_file)
-render_data = XPBDGenerator(args.render_path, 'render', kmeans_file)
+real_data = GBDGenerator(args.augmented_path, 'real', kmeans_file)
+render_data = GBDGenerator(args.render_path, 'render', kmeans_file)
 test_data = Pascal3dAll(args.pascal3d_path, 'test')
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)

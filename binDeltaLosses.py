@@ -126,6 +126,26 @@ class RelaXedProbabilisticLoss(nn.Module):
 		return torch.add(l1, self.alpha, l2)
 
 
+class ProbabilisticLoss(nn.Module):
+	def __init__(self, alpha, kmeans_file, my_loss):
+		super().__init__()
+		self.alpha = alpha
+		kmeans = pickle.load(open(kmeans_file, 'rb'))
+		self.cluster_centers = Variable(torch.from_numpy(kmeans.cluster_centers_).float()).cuda()
+		self.n_clusters = kmeans.n_clusters
+		self.my_loss = my_loss
+		self.ce = nn.CrossEntropyLoss().cuda()
+
+	def forward(self, ypred, ytrue):
+		# ytrue = (ydata_prob, ydata)
+		# ypred = (score, residual)
+		l1 = self.ce(ypred[0], ytrue[0])
+		l2 = torch.stack([self.my_loss(ytrue[1], torch.add(ypred[1], 1.0, self.cluster_centers.index_select(0, Variable(i*torch.ones(1).long().cuda()))))
+		                  for i in range(self.n_clusters)])
+		l2 = torch.mean(torch.sum(torch.mul(F.softmax(ypred[0], dim=1), torch.t(l2)), dim=1))
+		return torch.add(l1, self.alpha, l2)
+
+
 class RelaXedProbabilisticLossQ(nn.Module):
 	def __init__(self, alpha, kmeans_file, my_loss):
 		super().__init__()
@@ -154,6 +174,20 @@ class RelaXedProbabilisticMultiresLoss(RelaXedProbabilisticLoss):
 		# ytrue = (ydata_prob, ydata)
 		# ypred = (score, residual)
 		l1 = self.kl(F.log_softmax(ypred[0], dim=1), ytrue[0])
+		y = self.cluster_centers + ypred[1]
+		l2 = torch.stack([self.my_loss(ytrue[1], torch.squeeze(y.index_select(1, Variable(i*torch.ones(1).long().cuda())))) for i in range(self.n_clusters)])
+		l2 = torch.mean(torch.sum(torch.mul(F.softmax(ypred[0], dim=1), torch.t(l2)), dim=1))
+		return torch.add(l1, self.alpha, l2)
+
+
+class ProbabilisticMultiresLoss(ProbabilisticLoss):
+	def __init__(self, alpha, kmeans_file, my_loss):
+		super().__init__(alpha, kmeans_file, my_loss)
+
+	def forward(self, ypred, ytrue):
+		# ytrue = (ydata_prob, ydata)
+		# ypred = (score, residual)
+		l1 = self.ce(ypred[0], ytrue[0])
 		y = self.cluster_centers + ypred[1]
 		l2 = torch.stack([self.my_loss(ytrue[1], torch.squeeze(y.index_select(1, Variable(i*torch.ones(1).long().cuda())))) for i in range(self.n_clusters)])
 		l2 = torch.mean(torch.sum(torch.mul(F.softmax(ypred[0], dim=1), torch.t(l2)), dim=1))
