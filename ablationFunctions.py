@@ -23,7 +23,12 @@ class ImagesAll(Dataset):
 		self.ydata_type = ydata_type
 		self.list_image_names = []
 		for i in range(self.num_classes):
-			tmp = spio.loadmat(os.path.join(self.db_path, self.classes[i] + '_train_info'), squeeze_me=True)
+			if self.db_type == 'real':
+				tmp = spio.loadmat(os.path.join(self.db_path, self.classes[i] + '_train_info'), squeeze_me=True)
+			elif self.db_type == 'render':
+				tmp = spio.loadmat(os.path.join(self.db_path, self.classes[i] + '_info'), squeeze_me=True)
+			else:
+				raise NameError('Unknown db_type passed')
 			image_names = tmp['image_names']
 			self.list_image_names.append(image_names)
 		self.num_images = np.array([len(self.list_image_names[i]) for i in range(self.num_classes)])
