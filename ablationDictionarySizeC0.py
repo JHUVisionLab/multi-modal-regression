@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from dataGenerators import Pascal3dAll, my_collate
 from ablationFunctions import GBDGenerator
 from featureModels import resnet_model
-from axisAngle import get_error
+from axisAngle import get_error2
 from binDeltaModels import bin_3layer
 from helperFunctions import classes
 
@@ -24,6 +24,7 @@ import time
 import progressbar
 import sys
 import pickle
+from tensorboardX import SummaryWriter
 
 if len(sys.argv) > 1:
 	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
@@ -43,6 +44,7 @@ save_str = 'c0_k100_1'
 results_file = os.path.join('results', save_str)
 model_file = os.path.join('models', save_str + '.tar')
 plots_file = os.path.join('plots', save_str)
+log_dir = os.path.join('logs', save_str)
 
 # relevant variables
 num_workers = 4
@@ -93,15 +95,14 @@ model = my_model()
 criterion = nn.CrossEntropyLoss().cuda()
 optimizer = optim.Adam(model.parameters(), lr=init_lr)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
-train_loss = []
-train_loss_sum = 0.0
-train_samples = 0
+writer = SummaryWriter(log_dir)
+val_loss = []
+count = 0
 
 
 # OPTIMIZATION functions
-def training(save_loss=False):
-	global train_loss_sum
-	global train_samples
+def training():
+	global val_loss, count
 	model.train()
 	bar = progressbar.ProgressBar(max_value=len(render_loader))
 	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
@@ -121,15 +122,18 @@ def training(save_loss=False):
 		loss.backward()
 		optimizer.step()
 		# store
-		bar.update(i)
-		train_loss_sum += (loss_real.data[0] * xdata_real.size(0) + loss_render.data[0] * xdata_render.size(0))
-		train_samples += (xdata_real.size(0) + xdata_render.size(0))
-		if i % 1000 == 0 and save_loss:
-			train_loss.append(train_loss_sum / train_samples)
+		writer.add_scalar('train_loss', loss.item(), count)
+		if i % 1000 == 0:
+			ytest, yhat_test, test_labels = testing()
+			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
+			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
+			writer.add_scalar('val_loss', tmp_val_loss, count)
+			val_loss.append(tmp_val_loss)
+		count += 1
 		# cleanup
 		del xdata_real, xdata_render, label_real, label_render, ydata_real, ydata_render
 		del output_real, output_render, loss_real, loss_render, sample_real, sample_render, loss
-		gc.collect()
+		bar.update(i)
 	render_loader.dataset.shuffle_images()
 	real_loader.dataset.shuffle_images()
 
@@ -162,23 +166,26 @@ def save_checkpoint(filename):
 	torch.save(model.state_dict(), filename)
 
 
-# run optimization
 for epoch in range(num_epochs):
 	tic = time.time()
 	scheduler.step()
 	# training step
-	training(True)
+	training()
 	# save model at end of epoch
 	save_checkpoint(model_file)
+	# validation
+	ytest, yhat_test, test_labels = testing()
+	print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
 	# time and output
 	toc = time.time() - tic
 	print('Epoch: {0} done in time {1}s'.format(epoch, toc))
 	# cleanup
 	gc.collect()
-# save plots
-spio.savemat(plots_file, {'train_loss': train_loss})
+writer.close()
+val_loss = np.stack(val_loss)
+spio.savemat(plots_file, {'val_loss': val_loss})
 
 # evaluate the model
 ytest, yhat_test, test_labels = testing()
-get_error(ytest, yhat_test)
+print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
 spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
