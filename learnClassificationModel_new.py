@@ -128,6 +128,7 @@ def training():
 			writer.add_scalar('val_loss', tmp_val_loss, count)
 			val_loss.append(tmp_val_loss)
 		count += 1
+		bar.update(i)
 		# cleanup
 		del xdata_real, xdata_render, label_real, label_render, ydata_real, ydata_render
 		del output_real, output_render, loss_real, loss_render, sample_real, sample_render, loss
