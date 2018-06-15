@@ -42,6 +42,7 @@ parser.add_argument('--init_lr', type=float, default=1e-4)
 parser.add_argument('--num_epochs', type=int, default=3)
 parser.add_argument('--max_iterations', type=float, default=np.inf)
 parser.add_argument('--multires', type=bool, default=False)
+parser.add_argument('--alpha', type=float, default=1.0)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -63,8 +64,8 @@ num_clusters = kmeans.n_clusters
 ndim = 3
 num_classes = len(classes)
 
-criterion1 = SimpleLoss(1.0)
-criterion2 = GeodesicLoss(1.0, kmeans_file, geodesic_loss().cuda())
+criterion1 = SimpleLoss(args.alpha)
+criterion2 = GeodesicLoss(args.alpha, kmeans_file, geodesic_loss().cuda())
 
 # DATA
 # datasets

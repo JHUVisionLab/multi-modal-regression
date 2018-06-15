@@ -42,6 +42,7 @@ parser.add_argument('--init_lr', type=float, default=1e-4)
 parser.add_argument('--num_epochs', type=int, default=3)
 parser.add_argument('--max_iterations', type=float, default=np.inf)
 parser.add_argument('--multires', type=bool, default=False)
+parser.add_argument('--alpha', type=float, default=1.0)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -63,8 +64,8 @@ rotations_dict = np.stack([get_R(kmeans.cluster_centers_[i]) for i in range(kmea
 ndim = 3
 num_classes = len(classes)
 
-criterion1 = SimpleLoss(1.0)
-criterion2 = RiemannianLoss(1.0, rotations_dict)
+criterion1 = SimpleLoss(args.alpha)
+criterion2 = RiemannianLoss(args.alpha, rotations_dict)
 
 # DATA
 # datasets
