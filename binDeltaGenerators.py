@@ -33,9 +33,10 @@ class GBDGenerator(ImagesAll):
 
 
 class XPBDGenerator(ImagesAll):
-	def __init__(self, db_path, db_type, kmeans_file):
+	def __init__(self, db_path, db_type, kmeans_file, gamma):
 		# initialize the renderedImages dataset first
 		super().__init__(db_path, db_type)
+		self.gamma = gamma
 		# add the kmeans part
 		self.kmeans = pickle.load(open(kmeans_file, 'rb'))
 		self.num_clusters = self.kmeans.n_clusters
@@ -49,7 +50,7 @@ class XPBDGenerator(ImagesAll):
 		# update the ydata target using kmeans dictionary
 		ydata = sample['ydata'].numpy()
 		# bin part
-		ydata_bin = np.exp(-10.0*cdist(ydata, self.kmeans.cluster_centers_, 'sqeuclidean'))
+		ydata_bin = np.exp(-self.gamma*cdist(ydata, self.kmeans.cluster_centers_, 'sqeuclidean'))
 		ydata_bin = ydata_bin/np.sum(ydata_bin, axis=1, keepdims=True)
 		sample['ydata_bin'] = torch.from_numpy(ydata_bin).float()
 		# residual part

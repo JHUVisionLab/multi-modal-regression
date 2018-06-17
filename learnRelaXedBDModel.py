@@ -13,7 +13,7 @@ from binDeltaGenerators import XPBDGenerator
 from axisAngle import get_error2, geodesic_loss
 from binDeltaModels import OneBinDeltaModel, OneDeltaPerBinModel
 from binDeltaLosses import SimpleRelaXedLoss, RelaXedLoss
-from helperFunctions import classes
+from helperFunctions import classes, get_gamma
 
 import numpy as np
 import scipy.io as spio
@@ -58,6 +58,8 @@ kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl
 kmeans = pickle.load(open(kmeans_file, 'rb'))
 kmeans_dict = kmeans.cluster_centers_
 num_clusters = kmeans.n_clusters
+gamma = get_gamma(kmeans_dict)
+print('Gamma: ', gamma)
 
 # relevant variables
 ndim = 3
@@ -68,8 +70,8 @@ criterion2 = RelaXedLoss(1.0, kmeans_file, geodesic_loss().cuda())
 
 # DATA
 # datasets
-real_data = XPBDGenerator(args.augmented_path, 'real', kmeans_file)
-render_data = XPBDGenerator(args.render_path, 'render', kmeans_file)
+real_data = XPBDGenerator(args.augmented_path, 'real', kmeans_file, gamma)
+render_data = XPBDGenerator(args.render_path, 'render', kmeans_file, gamma)
 test_data = Pascal3dAll(args.pascal3d_path, 'test')
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)

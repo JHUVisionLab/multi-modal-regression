@@ -5,12 +5,13 @@ Numpy and Scipy script files that are common to both Keras+TF and PyTorch
 
 import numpy as np
 import re
+from scipy.spatial.distance import cdist
 
-__all__ = ['classes', 'eps', 'parse_name', 'rotation_matrix']
+__all__ = ['classes', 'eps', 'parse_name', 'rotation_matrix', 'get_gamma']
+
 
 # object categories of interest
-classes = ['aeroplane', 'bicycle', 'boat', 'bottle', 'bus', 'car', 'chair', 
-		   'diningtable', 'motorbike', 'sofa', 'train', 'tvmonitor']
+classes = ['aeroplane', 'bicycle', 'boat', 'bottle', 'bus', 'car', 'chair', 'diningtable', 'motorbike', 'sofa', 'train', 'tvmonitor']
 
 
 # numeric precision for my experiments
@@ -43,3 +44,13 @@ def rotation_matrix(az, el, ct):
 	Rc = np.array([[cc, -sc, 0], [sc, cc, 0], [0, 0, 1]])
 	R = np.dot(np.dot(Rc, Rb), Ra)
 	return R
+
+
+def get_gamma(kmeans_dict):
+	N = kmeans_dict.shape[0]
+	D = cdist(kmeans_dict, kmeans_dict, 'sqeuclidean')
+	d = np.zeros(N)
+	for i in range(N):
+		d[i] = np.amin(D[i, np.arange(N) != i])
+	gamma = 1/(2*np.amin(d))
+	return gamma
