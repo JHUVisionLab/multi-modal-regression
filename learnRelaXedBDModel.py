@@ -42,6 +42,7 @@ parser.add_argument('--init_lr', type=float, default=1e-4)
 parser.add_argument('--num_epochs', type=int, default=3)
 parser.add_argument('--max_iterations', type=float, default=np.inf)
 parser.add_argument('--multires', type=bool, default=False)
+parser.add_argument('--alpha', type=float, default=1.0)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -65,8 +66,8 @@ print('Gamma: ', gamma)
 ndim = 3
 num_classes = len(classes)
 
-criterion1 = SimpleRelaXedLoss(1.0)
-criterion2 = RelaXedLoss(1.0, kmeans_file, geodesic_loss().cuda())
+criterion1 = SimpleRelaXedLoss(args.alpha)
+criterion2 = RelaXedLoss(args.alpha, kmeans_file, geodesic_loss().cuda())
 
 # DATA
 # datasets
@@ -75,7 +76,7 @@ render_data = XPBDGenerator(args.render_path, 'render', kmeans_file, gamma)
 test_data = Pascal3dAll(args.pascal3d_path, 'test')
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
-render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
+render_loader = DataLoader(render_data, batch_size=4, shuffle=True, num_workers=4, pin_memory=True, collate_fn=my_collate)
 test_loader = DataLoader(test_data, batch_size=32, collate_fn=my_collate)
 print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
 
