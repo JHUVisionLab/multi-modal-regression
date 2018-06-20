@@ -42,6 +42,7 @@ parser.add_argument('--init_lr', type=float, default=1e-4)
 parser.add_argument('--num_epochs', type=int, default=3)
 parser.add_argument('--max_iterations', type=float, default=np.inf)
 parser.add_argument('--multires', type=bool, default=False)
+parser.add_argument('--alpha', type=float, default=1.0)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -64,9 +65,9 @@ ndim = 3
 num_classes = len(classes)
 
 if not args.multires:
-	criterion = ProbabilisticLoss(1.0, kmeans_file, geodesic_loss(reduce=False).cuda())
+	criterion = ProbabilisticLoss(args.alpha, kmeans_file, geodesic_loss(reduce=False).cuda())
 else:
-	criterion = ProbabilisticMultiresLoss(1.0, kmeans_file, geodesic_loss(reduce=False).cuda())
+	criterion = ProbabilisticMultiresLoss(args.alpha, kmeans_file, geodesic_loss(reduce=False).cuda())
 
 # DATA
 # datasets
