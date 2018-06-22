@@ -1,12 +1,12 @@
-function setupDataDetection_r4cnn
-% function that reads the bboxes provided by Render-for-CNN to evaluate my
-% models. Extract images using bboxes provided
+function setupDataDetection_vk
+% function that reads the bboxes provided by Viewpoints & Keypoints to 
+% evaluate my models. Extract images using bboxes provided
 clear; clc; close all;
 
 % relevant paths
 pascal3d_path = 'data/pascal3d';
 db_path = fullfile(pascal3d_path, 'PASCAL/VOCdevkit/VOC2012');
-mat_path = 'data/r4cnn_dets';
+mat_path = 'data/vk_dets';
 img_path = fullfile(db_path, 'JPEGImages');
 sets_file = fullfile(db_path, 'ImageSets/Main');
 dest_path = fullfile(mat_path, 'all');
@@ -22,12 +22,21 @@ classes = {'aeroplane', 'bicycle', 'boat', 'bottle', 'bus', 'car', ...
 	'chair', 'diningtable', 'motorbike', 'sofa', 'train', 'tvmonitor'};
 num_classes = 12;
 % load all detections
+tmp = load(fullfile(mat_path, 'VOC2012_val_det'));
+classInds = [1 2 4 5 6 7 9 11 14 18 19 20]; %rigid categories gotten from getParams.m in V&K code
+chosenboxes = tmp.chosenboxes(classInds);
+topscores = tmp.topscores(classInds);
+num_classes = length(chosenboxes);
+num_images = length(chosenboxes{1});
 dets = cell(1, num_classes);
 for i = 1:num_classes
-	tmp = load(fullfile(mat_path, sprintf('%s_pruned_boxes_voc_2012_val_bbox_reg', classes{i})));
-	dets{i} = tmp.boxes;	
+	cls_dets = cell(1, num_images);
+	for j = 1:num_images
+		cls_dets{j} = [chosenboxes{i}{j}, topscores{i}{j}];
+	end
+	dets{i} = cls_dets;
 end
-
+% get images
 for i = 1:length(image_names)
 	image_name = image_names{i};
 	bboxes = cell(1, num_classes); 
