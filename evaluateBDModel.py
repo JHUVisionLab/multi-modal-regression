@@ -46,10 +46,12 @@ class DetImages(Dataset):
 
 	def __getitem__(self, idx):
 		image_name = self.image_names[idx]
-		tmp = spio.loadmat(os.path.join(self.db_path, image_name), verify_compressed_data_integrity=False)
+		tmp = spio.loadmat(os.path.join(self.db_path, 'all', image_name), verify_compressed_data_integrity=False)
 		xdata = tmp['xdata']
+		if xdata.size == 0:
+			return {'xdata': np.array([])}
 		xdata = torch.stack([preprocess_real(xdata[i]) for i in range(xdata.shape[0])]).float()
-		label = torch.from_numpy(tmp['labels']).long()
+		label = torch.from_numpy(tmp['labels']-1).long()
 		bbox = torch.from_numpy(tmp['bboxes']).float()
 		sample = {'xdata': xdata, 'label': label, 'bbox': bbox}
 		return sample
@@ -86,7 +88,13 @@ def testing():
 	bbox = []
 	labels = []
 	for i in range(len(test_data)):
+		print(i)
 		sample = test_data[i]
+		if sample['xdata'].size == 0:
+			ypred.append(np.array([]))
+			bbox.append(np.array([]))
+			labels.append(np.array([]))
+			continue
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
 		output = model(xdata, label)

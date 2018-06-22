@@ -128,7 +128,7 @@ def training_init():
 			val_loss.append(tmp_val_loss)
 		count += 1
 		# cleanup
-		del xdata, xdata, label, output, loss, sample
+		del xdata, label, output, loss, sample
 		bar.update(i)
 		# stop
 		if i == max_iterations:
@@ -160,7 +160,7 @@ def training():
 			val_loss.append(tmp_val_loss)
 		count += 1
 		# cleanup
-		del xdata, xdata, label, output, loss, sample
+		del xdata, label, output, loss, sample
 		bar.update(i)
 		# stop
 		if i == max_iterations:
