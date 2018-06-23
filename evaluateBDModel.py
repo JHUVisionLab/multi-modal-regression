@@ -27,6 +27,7 @@ parser.add_argument('--N1', type=int, default=1000)
 parser.add_argument('--N2', type=int, default=500)
 parser.add_argument('--N3', type=int, default=100)
 parser.add_argument('--multires', type=bool, default=False)
+parser.add_argument('--batch_size', type=int, default=32)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -97,10 +98,15 @@ def testing():
 			continue
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
-		output = model(xdata, label)
-		ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
-		ypred_res = output[1].data.cpu().numpy()
-		ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
+		tmp_ypred = []
+		tmp_xdata = torch.split(xdata, args.batch_size)
+		tmp_label = torch.split(label, args.batch_size)
+		for j in range(len(tmp_xdata)):
+			output = model(tmp_xdata[j], tmp_label[j])
+			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+			ypred_res = output[1].data.cpu().numpy()
+			tmp_ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
+		ypred.append(np.concatenate(tmp_ypred))
 		bbox.append(sample['bbox'].numpy())
 		labels.append(sample['label'].numpy())
 		del xdata, label, output, sample
