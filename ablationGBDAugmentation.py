@@ -9,7 +9,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
 from dataGenerators import Pascal3dAll, my_collate
-from ablationFunctions import GBDGenerator
+from binDeltaGenerators import GBDGenerator
 from axisAngle import get_error2, geodesic_loss
 from binDeltaModels import OneBinDeltaModel, OneDeltaPerBinModel
 from binDeltaLosses import SimpleLoss, GeodesicLoss
@@ -76,7 +76,7 @@ elif args.type == 'rendered':
 	train_data = GBDGenerator(args.render_path, 'render', kmeans_file)
 else:
 	raise NameError('Unknown type passed')
-test_data = Pascal3dAll(args.pascal3d_path, 'val')
+test_data = Pascal3dAll(args.pascal3d_path, 'test')
 # setup data loaders
 train_loader = DataLoader(train_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 test_loader = DataLoader(test_data, batch_size=32, collate_fn=my_collate)
