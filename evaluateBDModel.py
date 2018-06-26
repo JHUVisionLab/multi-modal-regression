@@ -18,7 +18,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
-parser.add_argument('--det_path', type=str, default='data/r4cnn_dets/')
+parser.add_argument('--det_type', type=str, default='r4cnn')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=100)
 parser.add_argument('--feature_network', type=str, default='resnet')
@@ -32,6 +32,13 @@ args = parser.parse_args()
 print(args)
 # assign GPU
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
+
+if args.det_type == 'r4cnn':
+	det_path = 'data/r4cnn_dets/'
+elif args.det_type == 'vk':
+	det_path = 'data/vk_dets/'
+else:
+	raise NameError('Unknown det_type passed')
 
 
 class DetImages(Dataset):
@@ -58,11 +65,11 @@ class DetImages(Dataset):
 		return sample
 
 
-test_data = DetImages(args.det_path)
+test_data = DetImages(det_path)
 
 # save stuff here
 model_file = os.path.join('models', args.save_str + '.tar')
-results_file = os.path.join('results', args.save_str + '_dets')
+results_file = os.path.join('results', args.save_str + '_' + args.det_type + '_dets')
 
 # kmeans data
 kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
@@ -106,10 +113,11 @@ def testing():
 			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
 			ypred_res = output[1].data.cpu().numpy()
 			tmp_ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
+			del output
 		ypred.append(np.concatenate(tmp_ypred))
 		bbox.append(sample['bbox'].numpy())
 		labels.append(sample['label'].numpy())
-		del xdata, label, output, sample
+		del xdata, label, sample
 	return bbox, ypred, labels
 
 
