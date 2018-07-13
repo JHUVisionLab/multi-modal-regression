@@ -37,6 +37,10 @@ if args.det_type == 'r4cnn':
 	det_path = 'data/r4cnn_dets/'
 elif args.det_type == 'vk':
 	det_path = 'data/vk_dets/'
+elif args.det_type == 'maskrcnn':
+	det_path = 'data/maskrcnn_dets/'
+elif args.det_type == 'maskrcnn_nofinetune':
+	det_path = 'data/maskrcnn_dets_nofinetune'
 else:
 	raise NameError('Unknown det_type passed')
 
