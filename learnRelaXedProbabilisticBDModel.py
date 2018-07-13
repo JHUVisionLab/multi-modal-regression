@@ -7,6 +7,7 @@ import torch
 from torch import nn, optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 from dataGenerators import Pascal3dAll, my_collate
 from binDeltaGenerators import XPBDGenerator
@@ -42,6 +43,7 @@ parser.add_argument('--init_lr', type=float, default=1e-4)
 parser.add_argument('--num_epochs', type=int, default=3)
 parser.add_argument('--max_iterations', type=float, default=np.inf)
 parser.add_argument('--multires', type=bool, default=False)
+parser.add_argument('--alpha', type=float, default=1.0)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -54,24 +56,24 @@ plots_file = os.path.join('plots', args.save_str)
 log_dir = os.path.join('logs', args.save_str)
 
 # kmeans data
-kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
-kmeans = pickle.load(open(kmeans_file, 'rb'))
-kmeans_dict = kmeans.cluster_centers_
-num_clusters = kmeans.n_clusters
+gmm_file = 'data/gmm_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
+gmm = pickle.load(open(gmm_file, 'rb'))
+gmm_dict = gmm.means_
+num_clusters = gmm.n_components
 
 # relevant variables
 ndim = 3
 num_classes = len(classes)
 
 if not args.multires:
-	criterion = RelaXedProbabilisticLoss(1.0, kmeans_file, geodesic_loss(reduce=False).cuda())
+	criterion = RelaXedProbabilisticLoss(args.alpha, gmm_file, geodesic_loss(reduce=False).cuda())
 else:
-	criterion = RelaXedProbabilisticMultiresLoss(1.0, kmeans_file, geodesic_loss(reduce=False).cuda())
+	criterion = RelaXedProbabilisticMultiresLoss(args.alpha, gmm_file, geodesic_loss(reduce=False).cuda())
 
 # DATA
 # datasets
-real_data = XPBDGenerator(args.augmented_path, 'real', kmeans_file)
-render_data = XPBDGenerator(args.render_path, 'render', kmeans_file)
+real_data = XPBDGenerator(args.augmented_path, 'real', gmm_file)
+render_data = XPBDGenerator(args.render_path, 'render', gmm_file)
 test_data = Pascal3dAll(args.pascal3d_path, 'test')
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
@@ -151,13 +153,13 @@ def testing():
 		label = Variable(sample['label'].cuda())
 		output = model(xdata, label)
 		if not args.multires:
-			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+			ypred_bin = F.softmax(output[0], dim=1).data.cpu().numpy()
 			ypred_res = output[1].data.cpu().numpy()
-			tmp_ypred = kmeans_dict[ypred_bin, :] + ypred_res
+			tmp_ypred = np.dot(ypred_bin, gmm_dict) + ypred_res
 		else:
-			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+			ypred_bin = F.softmax(output[0], dim=1).data.cpu().numpy()
 			ypred_res = output[1].data.cpu().numpy()
-			tmp_ypred = np.stack([kmeans_dict[ypred_bin[i]] + ypred_res[i, ypred_bin[i], :] for i in range(ypred_bin.shape[0])])
+			tmp_ypred = np.stack([np.dot(gmm_dict + ypred_res[i], ypred_bin[i]) for i in range(ypred_bin.shape[0])])
 		ypred.append(tmp_ypred)
 		ytrue.append(sample['ydata'].numpy())
 		labels.append(sample['label'].numpy())
@@ -173,6 +175,10 @@ def testing():
 def save_checkpoint(filename):
 	torch.save(model.state_dict(), filename)
 
+
+# evaluate the model
+ytest, yhat_test, test_labels = testing()
+print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
 
 for epoch in range(args.num_epochs):
 	tic = time.time()

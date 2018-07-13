@@ -8,12 +8,12 @@ pascal3d_path = 'data/pascal3d';
 db_path = fullfile(pascal3d_path, 'PASCAL/VOCdevkit/VOC2012');
 mat_path = 'data/vk_dets';
 img_path = fullfile(db_path, 'JPEGImages');
-sets_file = fullfile(db_path, 'ImageSets/Main');
+sets_file = fullfile(db_path, 'ImageSets/Main/val.txt');
 dest_path = fullfile(mat_path, 'all');
 patch_size = [224, 224];
 
 % get list of all test images
-fid = fopen(fullfile(sets_file, 'val.txt'), 'r');
+fid = fopen(sets_file, 'r');
 tmp = textscan(fid, '%s');
 image_names = tmp{1};
 fclose(fid);

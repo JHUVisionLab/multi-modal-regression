@@ -107,12 +107,12 @@ class RelaXedLoss(nn.Module):
 
 
 class RelaXedProbabilisticLoss(nn.Module):
-	def __init__(self, alpha, kmeans_file, my_loss):
+	def __init__(self, alpha, gmm_file, my_loss):
 		super().__init__()
 		self.alpha = alpha
-		kmeans = pickle.load(open(kmeans_file, 'rb'))
-		self.cluster_centers = Variable(torch.from_numpy(kmeans.cluster_centers_).float()).cuda()
-		self.n_clusters = kmeans.n_clusters
+		gmm = pickle.load(open(gmm_file, 'rb'))
+		self.cluster_centers = Variable(torch.from_numpy(gmm.means_).float()).cuda()
+		self.n_clusters = gmm.n_components
 		self.my_loss = my_loss
 		self.kl = nn.KLDivLoss().cuda()
 
