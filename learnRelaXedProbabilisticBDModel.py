@@ -153,13 +153,20 @@ def testing():
 		label = Variable(sample['label'].cuda())
 		output = model(xdata, label)
 		if not args.multires:
-			ypred_bin = F.softmax(output[0], dim=1).data.cpu().numpy()
+			# ypred_bin = F.softmax(output[0], dim=1).data.cpu().numpy()
+			# ypred_res = output[1].data.cpu().numpy()
+			# tmp_ypred = np.dot(ypred_bin, gmm_dict) + ypred_res
+			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
 			ypred_res = output[1].data.cpu().numpy()
-			tmp_ypred = np.dot(ypred_bin, gmm_dict) + ypred_res
+			tmp_ypred = gmm_dict[ypred_bin, :] + ypred_res
 		else:
-			ypred_bin = F.softmax(output[0], dim=1).data.cpu().numpy()
+			# ypred_bin = F.softmax(output[0], dim=1).data.cpu().numpy()
+			# ypred_res = output[1].data.cpu().numpy()
+			# tmp_ypred = np.stack([np.dot(gmm_dict.T + ypred_res[i].T, ypred_bin[i]) for i in range(ypred_bin.shape[0])])
+			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
 			ypred_res = output[1].data.cpu().numpy()
-			tmp_ypred = np.stack([np.dot(gmm_dict + ypred_res[i], ypred_bin[i]) for i in range(ypred_bin.shape[0])])
+			tmp_ypred = np.stack(
+				[gmm_dict[ypred_bin[i]] + ypred_res[i, ypred_bin[i], :] for i in range(ypred_bin.shape[0])])
 		ypred.append(tmp_ypred)
 		ytrue.append(sample['ydata'].numpy())
 		labels.append(sample['label'].numpy())
