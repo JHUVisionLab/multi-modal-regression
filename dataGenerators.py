@@ -176,3 +176,47 @@ def get_residuals(ydata, key_rotations):
 		for j in range(len(key_rotations)):
 			ydata_res[i, j, :] = get_y(np.dot(key_rotations[j].T, get_R(ydata[i])))
 	return ydata_res
+
+
+class TestImages(Dataset):
+	def __init__(self, db_path, ydata_type='axis_angle'):
+		self.db_path = db_path
+		self.classes = classes
+		self.num_classes = len(self.classes)
+		self.ydata_type = ydata_type
+		self.list_image_names = []
+		self.list_labels = []
+		for i in range(self.num_classes):
+			tmp = spio.loadmat(os.path.join(self.db_path, self.classes[i] + '_info'), squeeze_me=True)
+			image_names = tmp['image_names']
+			self.list_image_names.append(image_names)
+			self.list_labels = i*np.ones(len(image_names), dtype='int')
+		normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+		self.preprocess = transforms.Compose([transforms.Resize([224, 224]), transforms.ToTensor(), normalize])
+		self.image_names = np.concatenate(self.list_image_names)
+		self.labels = np.concatenate(self.list_labels)
+
+	def __len__(self):
+		return len(self.image_names)
+
+	def __getitem__(self, idx):
+		# return sample with xdata, ydata, label
+		image_name = self.image_names[idx]
+		label = self.labels[idx]
+		# read image
+		img_pil = Image.open(os.path.join(self.db_path, self.classes[label], image_name + '.png'))
+		xdata = self.preprocess(img_pil)
+		# parse image name to get correponding target
+		_, _, az, el, ct, _ = parse_name(image_name)
+		R = rotation_matrix(az, el, ct)
+		if self.ydata_type == 'axis_angle':
+			tmpy = get_y(R)
+		elif self.ydata_type == 'quaternion':
+			tmpy = get_quaternion(R)
+		else:
+			raise NameError('Uknown ydata_type passed')
+		ydata = torch.from_numpy(tmpy).float()
+		label = label*torch.ones(1).long()
+		sample = {'xdata': xdata, 'ydata': ydata, 'label': label}
+		return sample
+
