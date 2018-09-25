@@ -190,7 +190,7 @@ class TestImages(Dataset):
 			tmp = spio.loadmat(os.path.join(self.db_path, self.classes[i] + '_info'), squeeze_me=True)
 			image_names = tmp['image_names']
 			self.list_image_names.append(image_names)
-			self.list_labels = i*np.ones(len(image_names), dtype='int')
+			self.list_labels.append(i*np.ones(len(image_names), dtype='int'))
 		normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 		self.preprocess = transforms.Compose([transforms.Resize([224, 224]), transforms.ToTensor(), normalize])
 		self.image_names = np.concatenate(self.list_image_names)
