@@ -21,7 +21,6 @@ import numpy as np
 import scipy.io as spio
 import gc
 import os
-import re
 import progressbar
 import argparse
 from tensorboardX import SummaryWriter
@@ -32,7 +31,7 @@ parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--db_type', type=str, default='clean')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--ydata_type', type=str, default='axis_angle')
-parser.add_argument('--num_workers', type=int, default=8)
+parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--nonlinearity', type=str, default='valid')
 parser.add_argument('--num_epochs', type=int, default=9)
 args = parser.parse_args()
@@ -82,7 +81,7 @@ class my_model(nn.Module):
 # Implements variation of SGD (optionally with momentum)
 class mySGD(Optimizer):
 
-	def __init__(self, params, c, alpha1=1e-7, alpha2=1e-9, momentum=0, dampening=0, weight_decay=0, nesterov=False):
+	def __init__(self, params, c, alpha1=1e-6, alpha2=1e-8, momentum=0, dampening=0, weight_decay=0, nesterov=False):
 		defaults = dict(alpha1=alpha1, alpha2=alpha2, momentum=momentum, dampening=dampening, weight_decay=weight_decay, nesterov=nesterov)
 		super(mySGD, self).__init__(params, defaults)
 		self.c = c
@@ -149,13 +148,16 @@ else:
 num_classes = len(classes)
 train_path = os.path.join(db_path, 'train')
 test_path = os.path.join(db_path, 'test')
+render_path = 'data/renderforcnn/'
 
 # DATA
-train_data = ImagesAll(train_path, 'real', args.ydata_type)
+real_data = ImagesAll(train_path, 'real', args.ydata_type)
+render_data = ImagesAll(render_path, 'render', args.ydata_type)
 test_data = TestImages(test_path, args.ydata_type)
-train_loader = DataLoader(train_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
+real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
+render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 test_loader = DataLoader(test_data, batch_size=32)
-print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
+print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
 
 # MODEL
 N0, N1, N2 = 2048, 1000, 500
@@ -167,7 +169,7 @@ model = my_model()
 model.load_state_dict(torch.load(model_file))
 # print(model)
 criterion = geodesic_loss().cuda()
-optimizer = mySGD(model.parameters(), c=2*len(train_loader))
+optimizer = mySGD(model.parameters(), c=2*len(real_loader))
 # store stuff
 writer = SummaryWriter(log_dir)
 count = 0
@@ -178,14 +180,20 @@ num_ensemble = 0
 def training():
 	global count, val_loss, num_ensemble
 	model.train()
-	bar = progressbar.ProgressBar(max_value=len(train_loader))
-	for i, sample in enumerate(train_loader):
+	bar = progressbar.ProgressBar(max_value=len(real_loader))
+	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
 		# forward steps
-		xdata = Variable(sample['xdata'].cuda())
-		label = Variable(sample['label'].cuda())
-		ydata = Variable(sample['ydata'].cuda())
-		output = model(xdata, label)
-		loss = criterion(output, ydata)
+		xdata_real = Variable(sample_real['xdata'].cuda())
+		label_real = Variable(sample_real['label'].cuda())
+		ydata_real = Variable(sample_real['ydata'].cuda())
+		output_real = model(xdata_real, label_real)
+		loss_real = criterion(output_real, ydata_real)
+		xdata_render = Variable(sample_render['xdata'].cuda())
+		label_render = Variable(sample_render['label'].cuda())
+		ydata_render = Variable(sample_render['ydata'].cuda())
+		output_render = model(xdata_render, label_render)
+		loss_render = criterion(output_render, ydata_render)
+		loss = loss_real + loss_render
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
@@ -203,9 +211,11 @@ def training():
 			results_file = os.path.join(results_dir, 'num'+str(num_ensemble))
 			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 		# cleanup
-		del xdata, label, ydata, output, loss, sample
+		del xdata_real, xdata_render, label_real, label_render, ydata_real, ydata_render
+		del output_real, output_render, loss_real, loss_render, sample_real, sample_render, loss
 		bar.update(i)
-	train_loader.dataset.shuffle_images()
+	render_loader.dataset.shuffle_images()
+	real_loader.dataset.shuffle_images()
 
 
 def testing():
