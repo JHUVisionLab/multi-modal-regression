@@ -32,7 +32,7 @@ parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--db_type', type=str, default='clean')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--ydata_type', type=str, default='axis_angle')
-parser.add_argument('--num_workers', type=int, default=4)
+parser.add_argument('--num_workers', type=int, default=8)
 parser.add_argument('--nonlinearity', type=str, default='valid')
 parser.add_argument('--num_epochs', type=int, default=9)
 args = parser.parse_args()
@@ -41,26 +41,15 @@ print(args)
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 model_file = os.path.join('models', args.save_str + '.tar')
-results_dir = os.path.join('results', args.save_str)
-plots_file = os.path.join('plots', args.save_str)
-log_dir = os.path.join('logs', args.save_str)
-os.mkdir(results_dir)
-
-
-# to handle synset_str with _ in it
-def parse_name2(image_name):
-	ind = [match.start() for match in re.finditer('_', image_name)]
-	synset_str = image_name[:ind[-5]]
-	model_str = image_name[ind[-5]+1:ind[-4]]
-	az = float(image_name[ind[-4]+2:ind[-3]])
-	el = float(image_name[ind[-3]+2:ind[-2]])
-	ct = float(image_name[ind[-2]+2:ind[-1]])
-	d = float(image_name[ind[-1]+2:])
-	return synset_str, model_str, az, el, ct, d
+results_dir = os.path.join('results', args.save_str + '_' + args.db_type)
+plots_file = os.path.join('plots', args.save_str + '_' + args.db_type)
+log_dir = os.path.join('logs', args.save_str + '_' + args.db_type)
+if not os.path.exists(results_dir):
+	os.mkdir(results_dir)
 
 
 def myProj(x):
-	angle = torch.norm(x, 2, 1)
+	angle = torch.norm(x, 2, 1, True)
 	axis = F.normalize(x)
 	angle = torch.fmod(angle, 2*np.pi)
 	return angle*axis
@@ -93,7 +82,7 @@ class my_model(nn.Module):
 # Implements variation of SGD (optionally with momentum)
 class mySGD(Optimizer):
 
-	def __init__(self, params, c, alpha1=1e-6, alpha2=1e-7, momentum=0, dampening=0, weight_decay=0, nesterov=False):
+	def __init__(self, params, c, alpha1=1e-7, alpha2=1e-9, momentum=0, dampening=0, weight_decay=0, nesterov=False):
 		defaults = dict(alpha1=alpha1, alpha2=alpha2, momentum=momentum, dampening=dampening, weight_decay=weight_decay, nesterov=nesterov)
 		super(mySGD, self).__init__(params, defaults)
 		self.c = c
@@ -147,21 +136,23 @@ class mySGD(Optimizer):
 					step_size = (1-2*t)*group['alpha1'] + 2*t*group['alpha2']
 				else:
 					step_size = 2*(1-t)*group['alpha2'] + (2*t-1)*group['alpha1']
+				writer.add_scalar('lr', step_size, state['step'])
 				p.data.add_(-step_size, d_p)
 
 		return loss
 
 
 if args.db_type == 'clean':
-	db_path = 'data/flipped_new/test'
+	db_path = 'data/flipped_new'
 else:
-	db_path = 'data/flipped_all/test'
-	parse_name = parse_name2
+	db_path = 'data/flipped_all'
 num_classes = len(classes)
+train_path = os.path.join(db_path, 'train')
+test_path = os.path.join(db_path, 'test')
 
 # DATA
-train_data = ImagesAll(db_path, 'real', args.ydata_type)
-test_data = TestImages(db_path, args.ydata_type)
+train_data = ImagesAll(train_path, 'real', args.ydata_type)
+test_data = TestImages(test_path, args.ydata_type)
 train_loader = DataLoader(train_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 test_loader = DataLoader(test_data, batch_size=32)
 print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
@@ -205,12 +196,12 @@ def training():
 			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
 			writer.add_scalar('val_loss', tmp_val_loss, count)
 			val_loss.append(tmp_val_loss)
+		count += 1
 		if count % optimizer.c == optimizer.c/2:
 			ytest, yhat_test, test_labels = testing()
 			num_ensemble += 1
 			results_file = os.path.join(results_dir, 'num'+str(num_ensemble))
 			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
-		count += 1
 		# cleanup
 		del xdata, label, ydata, output, loss, sample
 		bar.update(i)
@@ -242,6 +233,8 @@ def testing():
 
 ytest, yhat_test, test_labels = testing()
 print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
+results_file = os.path.join(results_dir, 'num'+str(num_ensemble))
+spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 
 for epoch in range(args.num_epochs):
 	tic = time.time()
