@@ -10,8 +10,8 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 from dataGenerators import ImagesAll, TestImages, my_collate
-# from axisAngle import get_error2, geodesic_loss
-from quaternion import get_error2, geodesic_loss
+from axisAngle import get_error2, geodesic_loss
+# from quaternion import get_error2, geodesic_loss
 from poseModels import model_3layer
 from helperFunctions import classes
 from featureModels import resnet_model, vgg_model
@@ -51,10 +51,10 @@ plots_file = os.path.join('plots', args.save_str)
 log_dir = os.path.join('logs', args.save_str)
 
 # relevant variables
-# ydata_type = 'axis_angle'
-# ndim = 3
-ydata_type = 'quaternion'
-ndim = 4
+ydata_type = 'axis_angle'
+ndim = 3
+# ydata_type = 'quaternion'
+# ndim = 4
 num_classes = len(classes)
 
 criterion1 = nn.MSELoss().cuda()
@@ -76,7 +76,7 @@ max_iterations = min(len(real_loader), len(render_loader))
 def myProj(x):
 	angle = torch.norm(x, 2, 1, True)
 	axis = F.normalize(x)
-	angle = torch.fmod(angle, 2*np.pi)
+	angle = torch.fmod(angle, np.pi)
 	return angle*axis
 
 
@@ -98,11 +98,11 @@ class RegressionModel(nn.Module):
 		label = Variable(label.unsqueeze(2).cuda())
 		y = torch.squeeze(torch.bmm(x, label), 2)
 		if args.nonlinearity == 'valid':
-			# y = np.pi*F.tanh(y)
-			y = F.tanh(y)
+			y = 2*np.pi*F.tanh(y)
+			# y = F.tanh(y)
 		elif args.nonlinearity == 'correct':
-			# y = myProj(y)
-			y = F.normalize(y)
+			y = myProj(y)
+			# y = F.normalize(y)
 		del x, label
 		return y
 
