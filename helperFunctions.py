@@ -6,6 +6,7 @@ Numpy and Scipy script files that are common to both Keras+TF and PyTorch
 import numpy as np
 import re
 from scipy.spatial.distance import cdist
+from torch.optim import Optimizer
 
 __all__ = ['classes', 'eps', 'parse_name', 'rotation_matrix', 'get_gamma']
 
@@ -54,3 +55,65 @@ def get_gamma(kmeans_dict):
 		d[i] = np.amin(D[i, np.arange(N) != i])
 	gamma = 1/(2*np.amin(d))
 	return gamma
+
+
+# Implements variation of SGD (optionally with momentum)
+class mySGD(Optimizer):
+
+	def __init__(self, params, c, alpha1=1e-6, alpha2=1e-8, momentum=0, dampening=0, weight_decay=0, nesterov=False):
+		defaults = dict(alpha1=alpha1, alpha2=alpha2, momentum=momentum, dampening=dampening, weight_decay=weight_decay, nesterov=nesterov)
+		super(mySGD, self).__init__(params, defaults)
+		self.c = c
+
+	def __setstate__(self, state):
+		super(mySGD, self).__setstate__(state)
+		for group in self.param_groups:
+			group.setdefault('nesterov', False)
+
+	def step(self, closure=None):
+		loss = None
+		if closure is not None:
+			loss = closure()
+
+		for group in self.param_groups:
+			weight_decay = group['weight_decay']
+			momentum = group['momentum']
+			dampening = group['dampening']
+			nesterov = group['nesterov']
+
+			for p in group['params']:
+				if p.grad is None:
+					continue
+				d_p = p.grad.data
+
+				state = self.state[p]
+
+				# State initialization
+				if len(state) == 0:
+					state['step'] = 0
+				state['step'] += 1
+
+				if weight_decay != 0:
+					d_p.add_(weight_decay, p.data)
+				if momentum != 0:
+					param_state = self.state[p]
+					if 'momentum_buffer' not in param_state:
+						buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
+						buf.mul_(momentum).add_(d_p)
+					else:
+						buf = param_state['momentum_buffer']
+						buf.mul_(momentum).add_(1 - dampening, d_p)
+					if nesterov:
+						d_p = d_p.add(momentum, buf)
+					else:
+						d_p = buf
+
+				# cyclical learning rate
+				t = (np.fmod(state['step']-1, self.c)+1)/self.c
+				if t <= 0.5:
+					step_size = (1-2*t)*group['alpha1'] + 2*t*group['alpha2']
+				else:
+					step_size = 2*(1-t)*group['alpha2'] + (2*t-1)*group['alpha1']
+				p.data.add_(-step_size, d_p)
+
+		return loss
