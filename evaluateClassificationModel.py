@@ -91,6 +91,7 @@ class my_model(nn.Module):
 
 # my_model
 model = my_model()
+model.load_state_dict(torch.load(model_file))
 # print(model)
 # loss and optimizer
 criterion = nn.CrossEntropyLoss().cuda()

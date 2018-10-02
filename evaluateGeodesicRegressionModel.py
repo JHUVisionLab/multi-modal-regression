@@ -12,8 +12,8 @@ import torch.nn.functional as F
 from torch.optim import Optimizer
 
 from featureModels import resnet_model
-# from axisAngle import get_error2, geodesic_loss
-from quaternion import get_error2, geodesic_loss
+from axisAngle import get_error2, geodesic_loss
+# from quaternion import get_error2, geodesic_loss
 from poseModels import model_3layer
 from helperFunctions import classes
 from dataGenerators import ImagesAll, TestImages, my_collate
@@ -72,8 +72,8 @@ class my_model(nn.Module):
 		if args.nonlinearity == 'valid':
 			y = np.pi*F.tanh(y)
 		elif args.nonlinearity == 'correct':
-			# y = myProj(y)
-			y = F.normalize(y)
+			y = myProj(y)
+			# y = F.normalize(y)
 		else:
 			pass
 		del x, label
