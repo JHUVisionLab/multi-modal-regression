@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Function that learns feature model + 3layer pose models x 12 object categories
-in an end-to-end manner by minimizing the mean squared error for axis-angle representation
+Geodesic Bin and Delta model for the axis-angle representation
 """
 
 import torch
@@ -9,176 +8,210 @@ from torch import nn, optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from dataGenerators import MultibinImages, Pascal3dAll, my_collate
-from featureModels import resnet_model
-from axisAngle import get_error, geodesic_loss
-from binDeltaModels import bin_3layer, res_3layer
-from binDeltaLosses import loss_m1, loss_m0
+from dataGenerators import TestImages, my_collate
+from binDeltaGenerators import GBDGenerator
+from axisAngle import get_error2, geodesic_loss
+from binDeltaModels import OneBinDeltaModel, OneDeltaPerBinModel
 from helperFunctions import classes
 
 import numpy as np
+import math
 import scipy.io as spio
 import gc
 import os
 import time
 import progressbar
-import sys
 import pickle
+import argparse
+from tensorboardX import SummaryWriter
 
-if len(sys.argv) > 1:
-	os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[1]
-
-# relevant paths
-render_path = 'data/renderforcnn/'
-augmented_path = 'data/augmented2/'
-pascal3d_path = 'data/original'
+parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
+parser.add_argument('--gpu_id', type=str, default='0')
+parser.add_argument('--render_path', type=str, default='data/renderforcnn/')
+parser.add_argument('--augmented_path', type=str, default='data/augmented2/')
+parser.add_argument('--pascal3d_path', type=str, default='data/flipped/test/')
+parser.add_argument('--save_str', type=str)
+parser.add_argument('--dict_size', type=int, default=200)
+parser.add_argument('--num_workers', type=int, default=4)
+parser.add_argument('--feature_network', type=str, default='resnet')
+parser.add_argument('--N0', type=int, default=2048)
+parser.add_argument('--N1', type=int, default=1000)
+parser.add_argument('--N2', type=int, default=500)
+parser.add_argument('--N3', type=int, default=100)
+parser.add_argument('--init_lr', type=float, default=1e-4)
+parser.add_argument('--num_epochs', type=int, default=3)
+parser.add_argument('--max_iterations', type=float, default=np.inf)
+parser.add_argument('--multires', type=bool, default=False)
+args = parser.parse_args()
+print(args)
+# assign GPU
+os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # save stuff here
-save_str = 'resnet50_3layer_m1_1'
-results_file = os.path.join('results', save_str)
-model_file = os.path.join('models', save_str + '.tar')
-plots_file = os.path.join('plots', save_str)
+results_file = os.path.join('results', args.save_str)
+model_file = os.path.join('models', args.save_str + '.tar')
+plots_file = os.path.join('plots', args.save_str)
+log_dir = os.path.join('logs', args.save_str)
 
 # kmeans data
-kmeans_file = 'data/kmeans_dictionary_axis_angle_100.pkl'
+kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
 kmeans = pickle.load(open(kmeans_file, 'rb'))
 kmeans_dict = kmeans.cluster_centers_
+cluster_centers_ = Variable(torch.from_numpy(kmeans_dict).float()).cuda()
 num_clusters = kmeans.n_clusters
 
 # relevant variables
 ndim = 3
-num_workers = 4
-N0 = 2048
-N1 = 1000
-N2 = 500
 num_classes = len(classes)
-init_lr = 0.0001
-num_epochs = 3
 
-problem_type = 'm1'
-criterion1 = loss_m0(1.0)
-criterion2 = loss_m1(1.0, kmeans_file, geodesic_loss().cuda())
+mse_loss = nn.MSELoss().cuda()
+ce_loss = nn.CrossEntropyLoss().cuda()
+gve_loss = geodesic_loss().cuda()
 
 # DATA
 # datasets
-real_data = MultibinImages(augmented_path, 'real', problem_type, kmeans_file)
-render_data = MultibinImages(render_path, 'render', problem_type, kmeans_file)
-test_data = Pascal3dAll(pascal3d_path, 'test')
+real_data = GBDGenerator(args.augmented_path, 'real', kmeans_file)
+render_data = GBDGenerator(args.render_path, 'render', kmeans_file)
+test_data = TestImages(args.pascal3d_path)
 # setup data loaders
-real_loader = DataLoader(real_data, batch_size=4, shuffle=True, num_workers=num_workers, pin_memory=True, collate_fn=my_collate)
-render_loader = DataLoader(render_data, batch_size=4, shuffle=True, num_workers=num_workers, pin_memory=True, collate_fn=my_collate)
-test_loader = DataLoader(test_data, batch_size=32, collate_fn=my_collate)
+real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
+render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
+test_loader = DataLoader(test_data, batch_size=32)
 print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
 
-
-# MODEL
-# my model for pose estimation: feature model + 1layer pose model x 12
-class my_model(nn.Module):
-	def __init__(self):
-		super().__init__()
-		self.num_classes = num_classes
-		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
-		self.bin_models = nn.ModuleList([bin_3layer(N0, N1, N2, num_clusters) for i in range(self.num_classes)]).cuda()
-		self.res_models = nn.ModuleList([res_3layer(N0, N1, N2, ndim) for i in range(self.num_classes)]).cuda()
-
-	def forward(self, x, label):
-		x = self.feature_model(x)
-		y1 = torch.stack([self.bin_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
-		y2 = torch.stack([self.res_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
-		label = torch.zeros(label.size(0), self.num_classes).scatter_(1, label.data.cpu(), 1.0)
-		label = Variable(label.unsqueeze(2).cuda())
-		y1 = torch.squeeze(torch.bmm(y1, label), 2)
-		y2 = torch.squeeze(torch.bmm(y2, label), 2)
-		del x, label
-		return [y1, y2]
-
+if np.isinf(args.max_iterations):
+	max_iterations = min(len(real_loader), len(render_loader))
+else:
+	max_iterations = args.max_iterations
 
 # my_model
-model = my_model()
+if not args.multires:
+	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+else:
+	model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
+
 # print(model)
 # loss and optimizer
-optimizer = optim.Adam(model.parameters(), lr=init_lr)
+optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
-
-train_loss = []
-train_loss_sum = 0.0
-train_samples = 0
+# store stuff
+writer = SummaryWriter(log_dir)
+count = 0
+val_loss = []
+s1, s2 = 1, 1
 
 
 # OPTIMIZATION functions
-def training_m0(save_loss=False):
-	global train_loss_sum
-	global train_samples
+def training_init():
+	global count, val_loss, s1, s2
 	model.train()
-	bar = progressbar.ProgressBar(max_value=len(render_loader))
+	bar = progressbar.ProgressBar(max_value=max_iterations)
 	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
 		# forward steps
+		# outputs
 		xdata_real = Variable(sample_real['xdata'].cuda())
 		label_real = Variable(sample_real['label'].cuda())
 		ydata_real = [Variable(sample_real['ydata_bin'].cuda()), Variable(sample_real['ydata_res'].cuda())]
 		output_real = model(xdata_real, label_real)
-		loss_real = criterion1(output_real, ydata_real)
 		xdata_render = Variable(sample_render['xdata'].cuda())
 		label_render = Variable(sample_render['label'].cuda())
 		ydata_render = [Variable(sample_render['ydata_bin'].cuda()), Variable(sample_render['ydata_res'].cuda())]
 		output_render = model(xdata_render, label_render)
-		loss_render = criterion1(output_render, ydata_render)
-		loss = loss_real + loss_render
+		# loss
+		ydata_bin = torch.cat((ydata_real[0], ydata_render[0]))
+		ydata_res = torch.cat((ydata_real[1], ydata_render[1]))
+		output_bin = torch.cat((output_real[0], output_render[0]))
+		output_res = torch.cat((output_real[1], output_render[1]))
+		Lc = ce_loss(output_bin, ydata_bin)
+		Lr = mse_loss(output_res, ydata_res)
+		loss = math.exp(-2*s1)*Lc + s1 + 0.5*math.exp(-2*s2)*Lr + s2
+		# sgd updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
+		# s1, s2 updates
+		s1 = 0.5*math.log(2*Lc)
+		s2 = 0.5*math.log(Lr)
 		# store
-		bar.update(i)
-		train_loss_sum += (loss_real.data[0] * xdata_real.size(0) + loss_render.data[0] * xdata_render.size(0))
-		train_samples += (xdata_real.size(0) + xdata_render.size(0))
-		if i % 1000 == 0 and save_loss:
-			train_loss.append(train_loss_sum / train_samples)
+		count += 1
+		writer.add_scalar('train_loss', loss.item(), count)
+		writer.add_scalar('s1', s1, count)
+		writer.add_scalar('s2', s2, count)
+		if i % 1000 == 0:
+			ytest, yhat_test, test_labels = testing()
+			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
+			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
+			writer.add_scalar('val_loss', tmp_val_loss, count)
+			val_loss.append(tmp_val_loss)
 		# cleanup
 		del xdata_real, xdata_render, label_real, label_render, ydata_real, ydata_render
-		del output_real, output_render, loss_real, loss_render, sample_real, sample_render, loss
-		gc.collect()
+		del ydata_bin, ydata_res, output_bin, output_res
+		del output_real, output_render, loss, sample_real, sample_render
+		bar.update(i)
+		# stop
+		if i == max_iterations:
+			break
 	render_loader.dataset.shuffle_images()
 	real_loader.dataset.shuffle_images()
 
 
-def training_m1(save_loss=False):
-	global train_loss_sum
-	global train_samples
+def training():
+	global count, val_loss, s1, s2
 	model.train()
-	bar = progressbar.ProgressBar(max_value=len(render_loader))
+	bar = progressbar.ProgressBar(max_value=max_iterations)
 	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
 		# forward steps
+		# output
 		xdata_real = Variable(sample_real['xdata'].cuda())
 		label_real = Variable(sample_real['label'].cuda())
 		ydata_real = [Variable(sample_real['ydata_bin'].cuda()), Variable(sample_real['ydata'].cuda())]
 		output_real = model(xdata_real, label_real)
-		loss_real = criterion2(output_real, ydata_real)
 		xdata_render = Variable(sample_render['xdata'].cuda())
 		label_render = Variable(sample_render['label'].cuda())
 		ydata_render = [Variable(sample_render['ydata_bin'].cuda()), Variable(sample_render['ydata'].cuda())]
 		output_render = model(xdata_render, label_render)
-		loss_render = criterion2(output_render, ydata_render)
-		loss = loss_real + loss_render
+		# loss
+		ydata_bin = torch.cat((ydata_real[0], ydata_render[0]))
+		ydata = torch.cat((ydata_real[1], ydata_render[1]))
+		output_bin = torch.cat((output_real[0], output_render[0]))
+		_, ind = torch.max(output_bin, dim=1)
+		y = torch.index_select(cluster_centers_, 0, ind)
+		output = y + torch.cat((output_real[1], output_render[1]))
+		Lc = ce_loss(output_bin, ydata_bin)
+		Lr = gve_loss(output, ydata)
+		loss = math.exp(-2*s1)*Lc + s1 + math.exp(-s2)*Lr + s2
+		# sgd updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
+		# s1, s2 updates
+		s1 = 0.5*math.log(2*Lc)
+		s2 = math.log(Lr)
 		# store
-		bar.update(i)
-		train_loss_sum += (loss_real.data[0] * xdata_real.size(0) + loss_render.data[0] * xdata_render.size(0))
-		train_samples += (xdata_real.size(0) + xdata_render.size(0))
-		if i % 1000 == 0 and save_loss:
-			train_loss.append(train_loss_sum / train_samples)
+		count += 1
+		writer.add_scalar('train_loss', loss.item(), count)
+		writer.add_scalar('s1', s1, count)
+		writer.add_scalar('s2', s2, count)
+		if i % 1000 == 0:
+			ytest, yhat_test, test_labels = testing()
+			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
+			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
+			writer.add_scalar('val_loss', tmp_val_loss, count)
+			val_loss.append(tmp_val_loss)
 		# cleanup
 		del xdata_real, xdata_render, label_real, label_render, ydata_real, ydata_render
-		del output_real, output_render, loss_real, loss_render, sample_real, sample_render, loss
-		gc.collect()
+		del ydata_bin, ydata, output_bin, output
+		del output_real, output_render, sample_real, sample_render, loss
+		bar.update(i)
+		# stop
+		if i == max_iterations:
+			break
 	render_loader.dataset.shuffle_images()
 	real_loader.dataset.shuffle_images()
 
 
 def testing():
 	model.eval()
-	bar = progressbar.ProgressBar(max_value=len(test_loader))
 	ypred = []
 	ytrue = []
 	labels = []
@@ -191,7 +224,6 @@ def testing():
 		ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
 		ytrue.append(sample['ydata'].numpy())
 		labels.append(sample['label'].numpy())
-		bar.update(i)
 		del xdata, label, output, sample
 		gc.collect()
 	ypred = np.concatenate(ypred)
@@ -206,30 +238,31 @@ def save_checkpoint(filename):
 
 
 # initialization
-training_m0(True)
-ytest, yhat_test, _ = testing()
-get_error(ytest, yhat_test)
-train_init = train_loss
+training_init()
+ytest, yhat_test, test_labels = testing()
+print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
 
-train_loss = []
-train_loss_sum = 0.0
-train_samples = 0
-for epoch in range(num_epochs):
+s1, s2 = 1, 1   # reset s1 and s2
+for epoch in range(args.num_epochs):
 	tic = time.time()
 	scheduler.step()
 	# training step
-	training_m1(True)
+	training()
 	# save model at end of epoch
 	save_checkpoint(model_file)
+	# validation
+	ytest, yhat_test, test_labels = testing()
+	print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
 	# time and output
 	toc = time.time() - tic
 	print('Epoch: {0} done in time {1}s'.format(epoch, toc))
 	# cleanup
 	gc.collect()
-# save plots
-spio.savemat(plots_file, {'train_loss': train_loss, 'train_init': train_init})
+writer.close()
+val_loss = np.stack(val_loss)
+spio.savemat(plots_file, {'val_loss': val_loss})
 
 # evaluate the model
 ytest, yhat_test, test_labels = testing()
-get_error(ytest, yhat_test)
+print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
 spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
