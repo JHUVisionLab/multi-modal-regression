@@ -29,7 +29,7 @@ parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--render_path', type=str, default='data/renderforcnn/')
 parser.add_argument('--augmented_path', type=str, default='data/augmented2/')
-parser.add_argument('--pascal3d_path', type=str, default='data/flipped/test/')
+parser.add_argument('--pascal3d_path', type=str, default='data/flipped_new/test/')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--num_workers', type=int, default=4)
@@ -98,12 +98,12 @@ scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
 writer = SummaryWriter(log_dir)
 count = 0
 val_loss = []
-s1, s2 = 1, 1
+s = 0
 
 
 # OPTIMIZATION functions
 def training_init():
-	global count, val_loss, s1, s2
+	global count, val_loss, s
 	model.train()
 	bar = progressbar.ProgressBar(max_value=max_iterations)
 	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
@@ -124,19 +124,16 @@ def training_init():
 		output_res = torch.cat((output_real[1], output_render[1]))
 		Lc = ce_loss(output_bin, ydata_bin)
 		Lr = mse_loss(output_res, ydata_res)
-		loss = math.exp(-2*s1)*Lc + s1 + 0.5*math.exp(-2*s2)*Lr + s2
-		# sgd updates
+		loss = Lc + 0.5*math.exp(-2*s)*Lr + s
+		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
-		# s1, s2 updates
-		s1 = 0.5*math.log(2*Lc)
-		s2 = 0.5*math.log(Lr)
+		s = 0.5*math.log(Lr)
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
-		writer.add_scalar('s1', s1, count)
-		writer.add_scalar('s2', s2, count)
+		writer.add_scalar('alpha', 0.5*math.exp(-2*s), count)
 		if i % 1000 == 0:
 			ytest, yhat_test, test_labels = testing()
 			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
@@ -156,7 +153,7 @@ def training_init():
 
 
 def training():
-	global count, val_loss, s1, s2
+	global count, val_loss, s
 	model.train()
 	bar = progressbar.ProgressBar(max_value=max_iterations)
 	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
@@ -179,19 +176,16 @@ def training():
 		output = y + torch.cat((output_real[1], output_render[1]))
 		Lc = ce_loss(output_bin, ydata_bin)
 		Lr = gve_loss(output, ydata)
-		loss = math.exp(-2*s1)*Lc + s1 + math.exp(-s2)*Lr + s2
-		# sgd updates
+		loss = Lc + math.exp(-s)*Lr + s
+		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
-		# s1, s2 updates
-		s1 = 0.5*math.log(2*Lc)
-		s2 = math.log(Lr)
+		s = math.log(Lr)
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
-		writer.add_scalar('s1', s1, count)
-		writer.add_scalar('s2', s2, count)
+		writer.add_scalar('alpha', math.exp(-s), count)
 		if i % 1000 == 0:
 			ytest, yhat_test, test_labels = testing()
 			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
@@ -242,7 +236,7 @@ training_init()
 ytest, yhat_test, test_labels = testing()
 print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
 
-s1, s2 = 1, 1   # reset s1 and s2
+s = 0  # reset
 for epoch in range(args.num_epochs):
 	tic = time.time()
 	scheduler.step()
