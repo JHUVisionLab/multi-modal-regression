@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Simple Bin and Delta model for the axis-angle representation
+Euclidean Bin and Delta model for the axis-angle representation
 """
 
 import torch
@@ -25,7 +25,7 @@ import pickle
 import argparse
 from tensorboardX import SummaryWriter
 
-parser = argparse.ArgumentParser(description='Simple Bin & Delta Model')
+parser = argparse.ArgumentParser(description='Euclidean Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--render_path', type=str, default='data/renderforcnn/')
 parser.add_argument('--augmented_path', type=str, default='data/augmented2/')
@@ -101,7 +101,7 @@ s = 0
 
 
 # OPTIMIZATION functions
-def training():
+def training_init():
 	global count, val_loss, s
 	model.train()
 	bar = progressbar.ProgressBar(max_value=max_iterations)
@@ -151,6 +151,58 @@ def training():
 	real_loader.dataset.shuffle_images()
 
 
+def training():
+	global count, val_loss, s
+	model.train()
+	bar = progressbar.ProgressBar(max_value=max_iterations)
+	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
+		# forward steps
+		# output
+		xdata_real = Variable(sample_real['xdata'].cuda())
+		label_real = Variable(sample_real['label'].cuda())
+		ydata_real = [Variable(sample_real['ydata_bin'].cuda()), Variable(sample_real['ydata'].cuda())]
+		output_real = model(xdata_real, label_real)
+		xdata_render = Variable(sample_render['xdata'].cuda())
+		label_render = Variable(sample_render['label'].cuda())
+		ydata_render = [Variable(sample_render['ydata_bin'].cuda()), Variable(sample_render['ydata'].cuda())]
+		output_render = model(xdata_render, label_render)
+		# loss
+		ydata_bin = torch.cat((ydata_real[0], ydata_render[0]))
+		ydata = torch.cat((ydata_real[1], ydata_render[1]))
+		output_bin = torch.cat((output_real[0], output_render[0]))
+		_, ind = torch.max(output_bin, dim=1)
+		y = torch.index_select(cluster_centers_, 0, ind)
+		output = y + torch.cat((output_real[1], output_render[1]))
+		Lc = ce_loss(output_bin, ydata_bin)
+		Lr = mse_loss(output, ydata)
+		loss = Lc + 0.5*math.exp(-2*s)*Lr + s
+		# parameter updates
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
+		s = 0.5*math.log(Lr)
+		# store
+		count += 1
+		writer.add_scalar('train_loss', loss.item(), count)
+		writer.add_scalar('alpha', 0.5*math.exp(-2*s), count)
+		if i % 1000 == 0:
+			ytest, yhat_test, test_labels = testing()
+			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
+			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
+			writer.add_scalar('val_loss', tmp_val_loss, count)
+			val_loss.append(tmp_val_loss)
+		# cleanup
+		del xdata_real, xdata_render, label_real, label_render, ydata_real, ydata_render
+		del ydata_bin, ydata, output_bin, output
+		del output_real, output_render, sample_real, sample_render, loss
+		bar.update(i)
+		# stop
+		if i == max_iterations:
+			break
+	render_loader.dataset.shuffle_images()
+	real_loader.dataset.shuffle_images()
+
+
 def testing():
 	model.eval()
 	ypred = []
@@ -178,7 +230,12 @@ def save_checkpoint(filename):
 	torch.save(model.state_dict(), filename)
 
 
-# training
+# initialization
+training_init()
+ytest, yhat_test, test_labels = testing()
+print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
+
+s = 0  # reset
 for epoch in range(args.num_epochs):
 	tic = time.time()
 	# scheduler.step()
