@@ -130,7 +130,6 @@ def training():
 		optimizer.step()
 		s = math.log(Lr)
 		# store
-		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
 		writer.add_scalar('alpha', math.exp(-s), count)
 		if i % 500 == 0:
