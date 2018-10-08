@@ -111,7 +111,7 @@ test_data = TestImages(test_path)
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
-test_loader = DataLoader(test_data, batch_size=32, collate_fn=my_collate)
+test_loader = DataLoader(test_data, batch_size=32)
 print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
 max_iterations = len(real_loader)
 
@@ -120,7 +120,7 @@ if not args.multires:
 	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
 else:
 	model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
-
+model.load_state_dict(torch.load(model_file))
 # print(model)
 # loss and optimizer
 optimizer = mySGD(model.parameters(), c=2*len(real_loader))

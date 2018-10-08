@@ -88,7 +88,7 @@ if not args.multires:
 	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, ndim)
 else:
 	model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, N3, ndim)
-
+model.load_state_dict(torch.load(model_file))
 # print(model)
 # loss and optimizer
 optimizer = mySGD(model.parameters(), c=2*len(real_loader))
