@@ -85,9 +85,9 @@ max_iterations = len(real_loader)
 
 # my_model
 if not args.multires:
-	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, ndim)
 else:
-	model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
+	model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, N3, ndim)
 model.load_state_dict(torch.load(model_file))
 # print(model)
 # loss and optimizer
