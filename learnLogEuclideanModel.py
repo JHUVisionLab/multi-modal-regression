@@ -75,7 +75,7 @@ test_data = TestImages(args.pascal3d_path)
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
-test_loader = DataLoader(test_data, batch_size=32, collate_fn=my_collate)
+test_loader = DataLoader(test_data, batch_size=32)
 print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
 
 if np.isinf(args.max_iterations):
@@ -127,9 +127,9 @@ def training():
 		Lc = ce_loss(output_bin, ydata_bin)
 		labels = torch.argmax(output_bin, dim=1)
 		labels = torch.zeros(labels.size(0), num_clusters).scatter_(1, labels.unsqueeze(1).data.cpu(), 1.0)
-		labels = Variable(labels.unsqueeze(2).cuda())
+		labels = Variable(labels.unsqueeze(2).float().cuda())
 		ydata_numpy = np.concatenate((sample_real['ydata'].data.cpu().numpy(), sample_render['ydata'].data.cpu().numpy()))
-		ydata_res = Variable(torch.from_numpy(get_residuals(ydata_numpy)).cuda())
+		ydata_res = Variable(torch.from_numpy(get_residuals(ydata_numpy)).float().cuda())
 		ydata_res = torch.squeeze(torch.bmm(ydata_res.permute(0, 2, 1), labels), 2)
 		output_res = torch.cat((output_real[1], output_render[1]))
 		Lr = mse_loss(output_res, ydata_res)
