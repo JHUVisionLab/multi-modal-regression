@@ -108,7 +108,7 @@ test_data = TestImages(args.pascal3d_path)
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
-test_loader = DataLoader(test_data, batch_size=32, collate_fn=my_collate)
+test_loader = DataLoader(test_data, batch_size=32)
 print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
 
 if np.isinf(args.max_iterations):
