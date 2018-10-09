@@ -64,6 +64,7 @@ num_clusters = kmeans.n_clusters
 ndim = 3
 num_classes = len(classes)
 
+# loss
 mse_loss = nn.MSELoss().cuda()
 ce_loss = nn.CrossEntropyLoss().cuda()
 gve_loss = geodesic_loss().cuda()
