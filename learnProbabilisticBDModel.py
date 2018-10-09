@@ -96,7 +96,7 @@ else:
 # print(model)
 # loss and optimizer
 optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
-# scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
 # store stuff
 writer = SummaryWriter(log_dir)
 count = 0
@@ -203,7 +203,7 @@ print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_class
 
 for epoch in range(args.num_epochs):
 	tic = time.time()
-	# scheduler.step()
+	scheduler.step()
 	# training step
 	training()
 	# save model at end of epoch
