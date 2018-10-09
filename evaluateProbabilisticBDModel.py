@@ -4,7 +4,7 @@ Geodesic Bin and Delta model for the axis-angle representation
 """
 
 import torch
-from torch import nn, optim
+from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
@@ -13,7 +13,7 @@ from dataGenerators import TestImages, my_collate
 from binDeltaGenerators import XPBDGenerator
 from axisAngle import get_error2, geodesic_loss
 from binDeltaModels import OneBinDeltaModel, ProbabilisticOneDeltaPerBinModel
-from helperFunctions import classes
+from helperFunctions import classes, mySGD
 
 import numpy as np
 import scipy.io as spio
@@ -28,31 +28,25 @@ from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser(description='RelaXed Probabilistic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
-parser.add_argument('--render_path', type=str, default='data/renderforcnn/')
-parser.add_argument('--augmented_path', type=str, default='data/augmented2/')
-parser.add_argument('--pascal3d_path', type=str, default='data/original')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--feature_network', type=str, default='resnet')
-parser.add_argument('--N0', type=int, default=2048)
-parser.add_argument('--N1', type=int, default=1000)
-parser.add_argument('--N2', type=int, default=500)
-parser.add_argument('--N3', type=int, default=100)
-parser.add_argument('--init_lr', type=float, default=1e-4)
-parser.add_argument('--num_epochs', type=int, default=3)
+parser.add_argument('--num_epochs', type=int, default=9)
 parser.add_argument('--max_iterations', type=float, default=np.inf)
-parser.add_argument('--multires', type=bool, default=False)
+parser.add_argument('--db_type', type=str, default='clean')
 args = parser.parse_args()
 print(args)
 # assign GPU
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # save stuff here
-results_file = os.path.join('results', args.save_str)
 model_file = os.path.join('models', args.save_str + '.tar')
-plots_file = os.path.join('plots', args.save_str)
-log_dir = os.path.join('logs', args.save_str)
+results_dir = os.path.join('results', args.save_str + '_' + args.db_type)
+plots_file = os.path.join('plots', args.save_str + '_' + args.db_type)
+log_dir = os.path.join('logs', args.save_str + '_' + args.db_type)
+if not os.path.exists(results_dir):
+	os.mkdir(results_dir)
 
 # gmm data
 gmm_file = 'data/gmm_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
@@ -64,47 +58,51 @@ cluster_centers = Variable(torch.from_numpy(gmm_dict).float()).cuda()
 # relevant variables
 ndim = 3
 num_classes = len(classes)
+N0, N1, N2, N3 = 2048, 1000, 500, 100
 
 # loss
 kl_div = nn.KLDivLoss().cuda()
 gve_loss = geodesic_loss(reduce=False).cuda()
 
 # DATA
+if args.db_type == 'clean':
+	db_path = 'data/flipped_new'
+else:
+	db_path = 'data/flipped_all'
+num_classes = len(classes)
+train_path = os.path.join(db_path, 'train')
+test_path = os.path.join(db_path, 'test')
+render_path = 'data/renderforcnn/'
 # datasets
-real_data = XPBDGenerator(args.augmented_path, 'real', gmm_file)
-render_data = XPBDGenerator(args.render_path, 'render', gmm_file)
-test_data = TestImages(args.pascal3d_path)
+real_data = XPBDGenerator(train_path, 'real', gmm_file)
+render_data = XPBDGenerator(render_path, 'render', gmm_file)
+test_data = TestImages(test_path)
 # setup data loaders
 real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 test_loader = DataLoader(test_data, batch_size=32)
 print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
-
-if np.isinf(args.max_iterations):
-	max_iterations = min(len(real_loader), len(render_loader))
-else:
-	max_iterations = args.max_iterations
+max_iterations = len(real_loader)
 
 # my_model
 if not args.multires:
 	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
 else:
 	model = ProbabilisticOneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
-
+model.load_state_dict(torch.load(model_file))
 # print(model)
-# loss and optimizer
-optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
+optimizer = mySGD(model.parameters(), c=2*len(real_loader))
 # store stuff
 writer = SummaryWriter(log_dir)
 count = 0
 val_loss = []
 s = 0
+num_ensemble = 0
 
 
 # OPTIMIZATION functions
 def training():
-	global count, val_loss, s
+	global count, val_loss, s, num_ensemble
 	model.train()
 	bar = progressbar.ProgressBar(max_value=max_iterations)
 	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
@@ -134,15 +132,19 @@ def training():
 		optimizer.step()
 		s = math.log(Lr)
 		# store
-		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
 		writer.add_scalar('alpha', math.exp(-s), count)
-		if i % 1000 == 0:
+		if i % 500 == 0:
 			ytest, yhat_test, test_labels = testing()
-			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
 			writer.add_scalar('val_loss', tmp_val_loss, count)
 			val_loss.append(tmp_val_loss)
+		count += 1
+		if count % optimizer.c == optimizer.c / 2:
+			ytest, yhat_test, test_labels = testing()
+			num_ensemble += 1
+			results_file = os.path.join(results_dir, 'num' + str(num_ensemble))
+			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 		# cleanup
 		del xdata_real, xdata_render, label_real, label_render
 		del ydata_bin, output_bin, ydata, output_res
@@ -191,24 +193,21 @@ def testing():
 	return ytrue, ypred, labels
 
 
-def save_checkpoint(filename):
-	torch.save(model.state_dict(), filename)
-
-
-# evaluate the model
 ytest, yhat_test, test_labels = testing()
 print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
+results_file = os.path.join(results_dir, 'num'+str(num_ensemble))
+spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 
 for epoch in range(args.num_epochs):
 	tic = time.time()
-	scheduler.step()
 	# training step
 	training()
-	# save model at end of epoch
-	save_checkpoint(model_file)
 	# validation
 	ytest, yhat_test, test_labels = testing()
-	print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
+	tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
+	print('\nMedErr: {0}'.format(tmp_val_loss))
+	writer.add_scalar('val_loss', tmp_val_loss, count)
+	val_loss.append(tmp_val_loss)
 	# time and output
 	toc = time.time() - tic
 	print('Epoch: {0} done in time {1}s'.format(epoch, toc))
@@ -217,8 +216,3 @@ for epoch in range(args.num_epochs):
 writer.close()
 val_loss = np.stack(val_loss)
 spio.savemat(plots_file, {'val_loss': val_loss})
-
-# evaluate the model
-ytest, yhat_test, test_labels = testing()
-print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
-spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})

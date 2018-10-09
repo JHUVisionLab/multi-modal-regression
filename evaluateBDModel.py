@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--det_type', type=str, default='r4cnn')
 parser.add_argument('--save_str', type=str)
-parser.add_argument('--dict_size', type=int, default=100)
+parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--feature_network', type=str, default='resnet')
 parser.add_argument('--N0', type=int, default=2048)
 parser.add_argument('--N1', type=int, default=1000)
@@ -61,7 +61,7 @@ class DetImages(Dataset):
 		tmp = spio.loadmat(os.path.join(self.db_path, 'all', image_name), verify_compressed_data_integrity=False)
 		xdata = tmp['xdata']
 		if xdata.size == 0:
-			return {'xdata': np.array([])}
+			return {'xdata': torch.from_numpy(np.array([]))}
 		xdata = torch.stack([preprocess_real(xdata[i]) for i in range(xdata.shape[0])]).float()
 		label = torch.from_numpy(tmp['labels']-1).long()
 		bbox = torch.from_numpy(tmp['bboxes']).float()
