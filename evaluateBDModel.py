@@ -15,6 +15,7 @@ import scipy.io as spio
 import os
 import pickle
 import argparse
+import progressbar
 
 parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
@@ -61,7 +62,7 @@ class DetImages(Dataset):
 		tmp = spio.loadmat(os.path.join(self.db_path, 'all', image_name), verify_compressed_data_integrity=False)
 		xdata = tmp['xdata']
 		if xdata.size == 0:
-			return {'xdata': torch.from_numpy(np.array([]))}
+			return {'xdata': torch.FloatTensor()}
 		xdata = torch.stack([preprocess_real(xdata[i]) for i in range(xdata.shape[0])]).float()
 		label = torch.from_numpy(tmp['labels']-1).long()
 		bbox = torch.from_numpy(tmp['bboxes']).float()
@@ -99,10 +100,10 @@ def testing():
 	ypred = []
 	bbox = []
 	labels = []
+	bar = progressbar.ProgressBar(max_value=len(test_data))
 	for i in range(len(test_data)):
-		print(i)
 		sample = test_data[i]
-		if sample['xdata'].size == 0:
+		if len(sample['xdata']) == 0:
 			ypred.append(np.array([]))
 			bbox.append(np.array([]))
 			labels.append(np.array([]))
@@ -122,6 +123,7 @@ def testing():
 		bbox.append(sample['bbox'].numpy())
 		labels.append(sample['label'].numpy())
 		del xdata, label, sample
+		bar.update(i+1)
 	return bbox, ypred, labels
 
 
