@@ -34,6 +34,7 @@ parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--feature_network', type=str, default='resnet')
 parser.add_argument('--num_epochs', type=int, default=9)
 parser.add_argument('--max_iterations', type=float, default=np.inf)
+parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
 args = parser.parse_args()
 print(args)
@@ -86,9 +87,9 @@ max_iterations = len(real_loader)
 
 # my_model
 if not args.multires:
-	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, ndim)
 else:
-	model = ProbabilisticOneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
+	model = ProbabilisticOneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, N3, ndim)
 model.load_state_dict(torch.load(model_file))
 # print(model)
 optimizer = mySGD(model.parameters(), c=2*len(real_loader))

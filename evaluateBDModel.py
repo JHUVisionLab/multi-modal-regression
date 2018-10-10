@@ -111,19 +111,19 @@ def testing(det_path):
 	return bbox, ypred, labels
 
 
-# evaluate the model
-bbox, ypred, labels = testing('data/vk_dets')
-results_file = os.path.join('results', args.save_str + '_vk_dets')
-spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+# # evaluate the model
+# bbox, ypred, labels = testing('data/vk_dets')
+# results_file = os.path.join('results', args.save_str + '_vk_dets')
+# spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
 
-bbox, ypred, labels = testing('data/r4cnn_dets')
-results_file = os.path.join('results', args.save_str + '_r4cnn_dets')
-spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+# bbox, ypred, labels = testing('data/r4cnn_dets')
+# results_file = os.path.join('results', args.save_str + '_r4cnn_dets')
+# spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
 
-bbox, ypred, labels = testing('data/maskrcnn_dets')
-results_file = os.path.join('results', args.save_str + '_maskrcnn_dets')
-spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+# bbox, ypred, labels = testing('data/maskrcnn_dets')
+# results_file = os.path.join('results', args.save_str + '_maskrcnn_dets')
+# spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
 
-bbox, ypred, labels = testing('data/maskrcnn_nofinetune_dets')
-results_file = os.path.join('results', args.save_str + '_maskrcnn_nofinetune_dets')
+bbox, ypred, labels = testing('data/maskrcnn_dets_nofinetune')
+results_file = os.path.join('results', args.save_str + '_maskrcnn_dets_nofinetune')
 spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
