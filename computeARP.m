@@ -4,7 +4,6 @@ function computeARP(filename, dets_path)
 % relevant paths
 pascal3d_path = 'data/pascal3d/';
 anno_path = fullfile(pascal3d_path, 'Annotations');
-% dets_path = 'data/r4cnn_dets/';
 
 classes = {'aeroplane', 'bicycle', 'boat', 'bottle', 'bus', 'car', ...
 	'chair', 'diningtable', 'motorbike', 'sofa', 'train', 'tvmonitor'};
@@ -16,10 +15,15 @@ image_names = tmp.image_names;
 N = length(image_names);
 
 % load predictions
-tmp = load(filename);
+tmp = load(fullfile('results', filename));
 boxes_all = tmp.bbox;
 ypred_all = tmp.ypred;
 labels_all = tmp.labels;
+
+total_all = zeros(1, num_classes);
+correct_all = zeros(1, num_classes);
+correct_view_all = zeros(1, num_classes);
+medErr_all = zeros(1, num_classes);
 
 for cls_id = 1:num_classes
 	cls = classes{cls_id};
@@ -30,14 +34,15 @@ for cls_id = 1:num_classes
 	count = zeros(N, 1);
 	num = zeros(N, 1);
 	num_pr = 0;
+	err = [];
 	for i = 1:N
 		% fprintf('cls: %s \t i: %d/%d \n', cls, i, N);
 		image_name = image_names{i};
 		% check if this annotation exists
-		filename = fullfile(anno_path, sprintf('%s_pascal', cls), [image_name, '.mat']);
-		if ~exist(filename, 'file'), continue; end
+		anno_file = fullfile(anno_path, sprintf('%s_pascal', cls), [image_name, '.mat']);
+		if ~exist(anno_file, 'file'), continue; end
 		% load annotation
-		tmp = load(filename);
+		tmp = load(anno_file);
 		record = tmp.record;
 		objects = record.objects;
 		% check cls
@@ -84,6 +89,7 @@ for cls_id = 1:num_classes
 					correct(num_pr) = 1;
 					det(index) = 1;
 					theta = computeGeodesicError(view_gt(index, :), view_pr);
+					err = [err, theta];
 					if theta < 30
 						correct_view(num_pr) = 1;
 					else
@@ -140,4 +146,11 @@ for cls_id = 1:num_classes
 
 	aa = VOCap(recall, accuracy);
 	fprintf('AA = %.4f\n', aa);	
+
+	fprintf('Stats: \t num_total=%d \t num_correct=%d \t num_correct_view:%d \t MedErr = %.4f \n', sum(count), num_correct, num_correct_view, median(err));
+	
+	total_all(cls_id) = sum(count);
+	correct_all(cls_id) = num_correct;
+	correct_view_all(cls_id) = num_correct_view;
+	medErr_all(cls_id) = median(err);
 end
