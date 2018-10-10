@@ -19,7 +19,6 @@ import progressbar
 
 parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
-parser.add_argument('--det_type', type=str, default='r4cnn')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--feature_network', type=str, default='resnet')
@@ -33,17 +32,6 @@ args = parser.parse_args()
 print(args)
 # assign GPU
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
-
-if args.det_type == 'r4cnn':
-	det_path = 'data/r4cnn_dets/'
-elif args.det_type == 'vk':
-	det_path = 'data/vk_dets/'
-elif args.det_type == 'maskrcnn':
-	det_path = 'data/maskrcnn_dets/'
-elif args.det_type == 'maskrcnn_nofinetune':
-	det_path = 'data/maskrcnn_dets_nofinetune'
-else:
-	raise NameError('Unknown det_type passed')
 
 
 class DetImages(Dataset):
@@ -70,12 +58,6 @@ class DetImages(Dataset):
 		return sample
 
 
-test_data = DetImages(det_path)
-
-# save stuff here
-model_file = os.path.join('models', args.save_str + '.tar')
-results_file = os.path.join('results', args.save_str + '_' + args.det_type + '_dets')
-
 # kmeans data
 kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
 kmeans = pickle.load(open(kmeans_file, 'rb'))
@@ -87,6 +69,7 @@ ndim = 3
 num_classes = len(classes)
 
 # my_model
+model_file = os.path.join('models', args.save_str + '.tar')
 if not args.multires:
 	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
 else:
@@ -95,7 +78,8 @@ else:
 model.load_state_dict(torch.load(model_file))
 
 
-def testing():
+def testing(det_path):
+	test_data = DetImages(det_path)
 	model.eval()
 	ypred = []
 	bbox = []
@@ -128,5 +112,18 @@ def testing():
 
 
 # evaluate the model
-bbox, ypred, labels = testing()
+bbox, ypred, labels = testing('data/vk_dets')
+results_file = os.path.join('results', args.save_str + '_vk_dets')
+spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+
+bbox, ypred, labels = testing('data/r4cnn_dets')
+results_file = os.path.join('results', args.save_str + '_r4cnn_dets')
+spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+
+bbox, ypred, labels = testing('data/maskrcnn_dets')
+results_file = os.path.join('results', args.save_str + '_maskrcnn_dets')
+spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+
+bbox, ypred, labels = testing('data/maskrcnn_nofinetune_dets')
+results_file = os.path.join('results', args.save_str + '_maskrcnn_nofinetune_dets')
 spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
