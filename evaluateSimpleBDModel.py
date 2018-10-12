@@ -62,7 +62,6 @@ if args.db_type == 'clean':
 	db_path = 'data/flipped_new'
 else:
 	db_path = 'data/flipped_all'
-num_classes = len(classes)
 train_path = os.path.join(db_path, 'train')
 test_path = os.path.join(db_path, 'test')
 render_path = 'data/renderforcnn/'
