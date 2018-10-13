@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Joint Cat & Pose model (Top1) with Geodesic Bin and Delta model for the axis-angle representation
+Joint Cat & Pose model (Weighted) with Geodesic Bin and Delta model for the axis-angle representation
 """
 
 import torch
 from torch import nn, optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 from dataGenerators import TestImages, my_collate
 from binDeltaGenerators import GBDGenerator
@@ -93,11 +94,25 @@ class JointCatPoseModel(nn.Module):
 		self.fc = nn.Linear(N0, num_classes).cuda()
 
 	def forward(self, x):
-		y1 = self.oracle_model.feature_model(x)
-		y1 = self.fc(y1)
-		label = torch.argmax(y1, dim=1, keepdim=True)
-		y2 = self.oracle_model(x, label)
-		return [y1, y2[0], y2[1]]   # cat, pose_bin, pose_delta
+		x = self.oracle_model.feature_model(x)
+		y0 = self.fc(x)
+		label = torch.unsqueeze(F.softmax(y0, dim=1), dim=2)
+		if not args.multires:
+			y1 = torch.stack([self.oracle_model.bin_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
+			y2 = torch.stack([self.oracle_model.res_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
+			y1 = torch.squeeze(torch.bmm(y1, label), 2)
+			y2 = torch.squeeze(torch.bmm(y2, label), 2)
+		else:
+			y1 = torch.stack([self.oracle_model.bin_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
+			y2 = torch.stack([self.oracle_model.res_models[i](x) for i in range(self.oracle_model.num_classes * self.oracle_model.num_clusters)])
+			y2 = y2.view(self.oracle_model.num_classes, self.oracle_model.num_clusters, -1, self.oracle_model.ndim).permute(1, 2, 3, 0)
+			y1 = torch.squeeze(torch.bmm(y1, label), 2)
+			y2 = torch.squeeze(torch.matmul(y2, label), 3)
+			pose_label = torch.argmax(y1, dim=1, keepdim=True)
+			pose_label = torch.zeros(pose_label.size(0), self.oracle_model.num_clusters).scatter_(1, pose_label.data.cpu(), 1.0)
+			pose_label = Variable(pose_label.unsqueeze(2).cuda())
+			y2 = torch.squeeze(torch.bmm(y2.permute(1, 2, 0), pose_label), 2)
+		return [y0, y1, y2]   # cat, pose_bin, pose_delta
 
 
 model = JointCatPoseModel(orig_model)
@@ -191,7 +206,6 @@ def save_checkpoint(filename):
 
 
 def get_accuracy(ytrue, ypred, num_classes):
-	# print(ytrue.shape, ypred.shape)
 	acc = np.zeros(num_classes)
 	for i in range(num_classes):
 		acc[i] = np.sum((ytrue == i)*(ypred == i))/np.sum(ytrue == i)
