@@ -76,7 +76,7 @@ train_data = GBDGenerator(train_path, 'real', kmeans_file)
 test_data = TestImages(test_path)
 # setup data loaders
 train_loader = DataLoader(train_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
-test_loader = DataLoader(test_data, batch_size=32)
+test_loader = DataLoader(test_data, batch_size=16)
 print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
 
 # my_model
@@ -93,8 +93,8 @@ class JointCatPoseModel(nn.Module):
 		self.fc = nn.Linear(N0, num_classes).cuda()
 
 	def forward(self, x):
-		x = self.oracle_model.feature_model(x)
-		y1 = self.fc(x)
+		y1 = self.oracle_model.feature_model(x)
+		y1 = self.fc(y1)
 		label = torch.argmax(y1, dim=1, keepdim=True)
 		y2 = self.oracle_model(x, label)
 		return [y1, y2[0], y2[1]]   # cat, pose_bin, pose_delta
@@ -153,7 +153,7 @@ def training():
 			val_acc.append(tmp_acc)
 			val_err.append(tmp_err)
 		# cleanup
-		del xdata, label, output, loss
+		del xdata, label, output, loss, output_cat, output_bin, output_res
 		bar.update(i+1)
 	train_loader.dataset.shuffle_images()
 
@@ -176,7 +176,7 @@ def testing():
 		ypred_res = output_res.data.cpu().numpy()
 		ypred_pose.append(kmeans_dict[ypred_bin, :] + ypred_res)
 		ytrue_pose.append(sample['ydata'].numpy())
-		del xdata, label, output, sample
+		del xdata, label, output, sample, output_cat, output_bin, output_res
 		gc.collect()
 	ytrue_cat = np.concatenate(ytrue_cat)
 	ypred_cat = np.concatenate(ypred_cat)
