@@ -147,7 +147,7 @@ for cls_id = 1:num_classes
 	aa = VOCap(recall, accuracy);
 	fprintf('AA = %.4f\n', aa);	
 
-	fprintf('Stats: \t num_total=%d \t num_correct=%d \t num_correct_view:%d \t MedErr = %.4f \n', sum(count), num_correct, num_correct_view, median(err));
+	fprintf('Stats: \t num_total=%d \t percent_correct=%0.2f \t percent_correct_view:%0.2f \t MedErr = %2.1f \n', sum(count), num_correct/sum(count), num_correct_view/sum(count), median(err));
 	
 	total_all(cls_id) = sum(count);
 	correct_all(cls_id) = num_correct;

@@ -98,7 +98,7 @@ class RegressionModel(nn.Module):
 		label = Variable(label.unsqueeze(2).cuda())
 		y = torch.squeeze(torch.bmm(x, label), 2)
 		if args.nonlinearity == 'valid':
-			y = 2*np.pi*F.tanh(y)
+			y = np.pi*F.tanh(y)
 			# y = F.tanh(y)
 		elif args.nonlinearity == 'correct':
 			y = myProj(y)

@@ -128,7 +128,6 @@ def training():
 		labels = Variable(labels.unsqueeze(2).float().cuda())
 		ydata_numpy = np.concatenate((sample_real['ydata'].data.cpu().numpy(), sample_render['ydata'].data.cpu().numpy()))
 		ydata_res = Variable(torch.from_numpy(get_residuals(ydata_numpy, labels_numpy)).float().cuda())
-		ydata_res = torch.squeeze(torch.bmm(ydata_res.permute(0, 2, 1), labels), 2)
 		output_res = torch.cat((output_real[1], output_render[1]))
 		Lr = mse_loss(output_res, ydata_res)
 		loss = Lc + 0.5*math.exp(-2*s)*Lr + s
