@@ -43,10 +43,10 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # save stuff here
 init_model_file = os.path.join('models', args.save_str + '_cat.tar')
-model_file = os.path.join('models', args.save_str + '_top1.tar')
-results_file = os.path.join('results', args.save_str + '_top1_' + args.db_type)
-plots_file = os.path.join('plots', args.save_str + '_top1_' + args.db_type)
-log_dir = os.path.join('logs', args.save_str + '_top1_' + args.db_type)
+model_file = os.path.join('models', args.save_str + '_wgt.tar')
+results_file = os.path.join('results', args.save_str + '_wgt_' + args.db_type)
+plots_file = os.path.join('plots', args.save_str + '_wgt_' + args.db_type)
+log_dir = os.path.join('logs', args.save_str + '_wgt_' + args.db_type)
 
 # kmeans data
 kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
@@ -77,7 +77,7 @@ train_data = GBDGenerator(train_path, 'real', kmeans_file)
 test_data = TestImages(test_path)
 # setup data loaders
 train_loader = DataLoader(train_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
-test_loader = DataLoader(test_data, batch_size=16)
+test_loader = DataLoader(test_data, batch_size=32)
 print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
 
 # my_model
