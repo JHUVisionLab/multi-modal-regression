@@ -33,6 +33,7 @@ parser.add_argument('--feature_network', type=str, default='resnet')
 parser.add_argument('--num_epochs', type=int, default=20)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
+parser.add_argument('--init_lr', type=float, default=1e-3)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -83,14 +84,14 @@ if not args.multires:
 	orig_model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, ndim)
 else:
 	orig_model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, N3, ndim)
-orig_model.load_state_dict(torch.load(model_file))
+orig_model.load_state_dict(torch.load(init_model_file))
 
 
 class JointCatPoseModel(nn.Module):
 	def __init__(self, oracle_model):
 		super().__init__()
 		self.oracle_model = oracle_model
-		self.fc = nn.Linear(N0, num_classes)
+		self.fc = nn.Linear(N0, num_classes).cuda()
 
 	def forward(self, x):
 		x = self.oracle_model.feature_model(x)
@@ -103,7 +104,7 @@ model = JointCatPoseModel(orig_model)
 for param in model.oracle_model.parameters():
 	param.requires_grad = False
 # print(model)
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3)
+optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.init_lr)
 scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: 1/(1+ep))
 writer = SummaryWriter(log_dir)
 count = 0
@@ -118,7 +119,7 @@ def training():
 		# forward steps
 		# output
 		xdata = Variable(sample['xdata'].cuda())
-		label = Variable(sample['label'].cuda())
+		label = Variable(sample['label'].squeeze().cuda())
 		output = model(xdata)
 		# loss
 		loss = ce_loss(output, label)
@@ -149,8 +150,8 @@ def testing():
 		output = model(xdata)
 		tmp_labels = np.argmax(output.data.cpu().numpy(), axis=1)
 		pred_labels.append(tmp_labels)
-		label = Variable(sample['label'].cuda())
-		gt_labels.append(sample['label'].numpy())
+		label = Variable(sample['label'])
+		gt_labels.append(sample['label'].squeeze().numpy())
 		del xdata, label, output, sample
 		gc.collect()
 	gt_labels = np.concatenate(gt_labels)
@@ -169,13 +170,13 @@ def get_accuracy(ytrue, ypred):
 	for i in range(num_classes):
 		acc[i] = np.sum((ytrue == i)*(ypred == i))/np.sum(ytrue == i)
 	# print(acc)
-	print('Mean: {0}'.format(np.mean(acc)))
-	return np.mean(acc)[0]
+	# print('Mean: {0}'.format(np.mean(acc)))
+	return np.mean(acc)
 
 
 gt_labels, pred_labels = testing()
 tmp_acc = get_accuracy(gt_labels, pred_labels)
-print('\nAcc: {0}'.format(tmp_acc))
+print('Acc: {0}'.format(tmp_acc))
 
 for epoch in range(args.num_epochs):
 	tic = time.time()
@@ -194,5 +195,5 @@ for epoch in range(args.num_epochs):
 	# cleanup
 	gc.collect()
 writer.close()
-val_loss = np.stack(val_loss)
-spio.savemat(plots_file, {'val_loss': val_loss})
+val_acc = np.stack(val_acc)
+spio.savemat(plots_file, {'val_acc': val_acc})
