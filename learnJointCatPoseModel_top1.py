@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from dataGenerators import TestImages, my_collate
 from binDeltaGenerators import GBDGenerator
 from binDeltaModels import OneBinDeltaModel, OneDeltaPerBinModel
+from axisAngle import get_error2, geodesic_loss
 from helperFunctions import classes
 
 import numpy as np
@@ -33,18 +34,18 @@ parser.add_argument('--feature_network', type=str, default='resnet')
 parser.add_argument('--num_epochs', type=int, default=20)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
-parser.add_argument('--init_lr', type=float, default=1e-3)
+parser.add_argument('--init_lr', type=float, default=1e-5)
 args = parser.parse_args()
 print(args)
 # assign GPU
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # save stuff here
-init_model_file = os.path.join('models', args.save_str + '.tar')
-model_file = os.path.join('models', args.save_str + '_cat.tar')
-results_file = os.path.join('results', args.save_str + '_cat_' + args.db_type)
-plots_file = os.path.join('plots', args.save_str + '_cat_' + args.db_type)
-log_dir = os.path.join('logs', args.save_str + '_cat_' + args.db_type)
+init_model_file = os.path.join('models', args.save_str + '_cat.tar')
+model_file = os.path.join('models', args.save_str + '_top1.tar')
+results_file = os.path.join('results', args.save_str + '_top1_' + args.db_type)
+plots_file = os.path.join('plots', args.save_str + '_top1_' + args.db_type)
+log_dir = os.path.join('logs', args.save_str + '_top1_' + args.db_type)
 
 # kmeans data
 kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
@@ -67,6 +68,7 @@ test_path = os.path.join(db_path, 'test')
 
 # loss
 ce_loss = nn.CrossEntropyLoss().cuda()
+gve_loss = geodesic_loss().cuda()
 
 # DATA
 # datasets
@@ -82,7 +84,6 @@ if not args.multires:
 	orig_model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, ndim)
 else:
 	orig_model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, N3, ndim)
-orig_model.load_state_dict(torch.load(init_model_file))
 
 
 class JointCatPoseModel(nn.Module):
@@ -93,70 +94,96 @@ class JointCatPoseModel(nn.Module):
 
 	def forward(self, x):
 		x = self.oracle_model.feature_model(x)
-		y = self.fc(x)
-		return y
+		y1 = self.fc(x)
+		label = torch.argmax(y1, dim=1, keepdim=True)
+		y2 = self.oracle_model(x, label)
+		return [y1, y2[0], y2[1]]   # cat, pose_bin, pose_delta
 
 
 model = JointCatPoseModel(orig_model)
-# freeze the feature+pose part
-for param in model.oracle_model.parameters():
-	param.requires_grad = False
+model.load_state_dict(torch.load(init_model_file))
 # print(model)
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.init_lr)
+optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
 scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: 1/(1+ep))
 writer = SummaryWriter(log_dir)
 count = 0
+s = 0
+val_err = []
 val_acc = []
 
 
 def training():
-	global count, val_acc
+	global count, s, val_acc, val_err
 	model.train()
 	bar = progressbar.ProgressBar(max_value=len(train_loader))
 	for i, sample in enumerate(train_loader):
 		# forward steps
 		# output
-		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].squeeze().cuda())
+		ydata_bin = Variable(sample['ydata_bin'].cuda())
+		ydata = Variable(sample['ydata'].cuda())
+		xdata = Variable(sample['xdata'].cuda())
 		output = model(xdata)
+		output_cat = output[0]
+		output_bin = output[1]
+		output_res = output[2]
 		# loss
-		loss = ce_loss(output, label)
+		Lc_cat = ce_loss(output_cat, label)
+		Lc_pose = ce_loss(output_bin, ydata_bin)
+		ind = torch.argmax(output_bin, dim=1)
+		y = torch.index_select(cluster_centers_, 0, ind) + output_res
+		Lr = gve_loss(y, ydata)
+		loss = Lc_cat + Lc_pose + math.exp(-s)*Lr + s
 		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
+		s = math.log(Lr)
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
+		writer.add_scalar('alpha', math.exp(-s), count)
 		if i % 500 == 0:
-			gt_labels, pred_labels = testing()
-			spio.savemat(results_file, {'gt_labels': gt_labels, 'pred_labels': pred_labels})
-			tmp_acc = get_accuracy(gt_labels, pred_labels, num_classes)
+			ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
+			spio.savemat(results_file, {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose})
+			tmp_acc = get_accuracy(ytrue_cat, ypred_cat, num_classes)
+			tmp_err = get_error2(ytrue_pose, ypred_pose, ytrue_cat, num_classes)
 			writer.add_scalar('val_acc', tmp_acc, count)
+			writer.add_scalar('val_err', tmp_err, count)
 			val_acc.append(tmp_acc)
+			val_err.append(tmp_err)
 		# cleanup
 		del xdata, label, output, loss
-		bar.update(i)
+		bar.update(i+1)
 	train_loader.dataset.shuffle_images()
 
 
 def testing():
 	model.eval()
-	gt_labels = []
-	pred_labels = []
+	ytrue_cat, ytrue_pose = [], []
+	ypred_cat, ypred_pose = [], []
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		output = model(xdata)
-		tmp_labels = np.argmax(output.data.cpu().numpy(), axis=1)
-		pred_labels.append(tmp_labels)
+		output_cat = output[0]
+		output_bin = output[1]
+		output_res = output[2]
+		tmp_labels = np.argmax(output_cat.data.cpu().numpy(), axis=1)
+		ypred_cat.append(tmp_labels)
 		label = Variable(sample['label'])
-		gt_labels.append(sample['label'].squeeze().numpy())
+		ytrue_cat.append(sample['label'].squeeze().numpy())
+		ypred_bin = np.argmax(output_bin.data.cpu().numpy(), axis=1)
+		ypred_res = output_res.data.cpu().numpy()
+		ypred_pose.append(kmeans_dict[ypred_bin, :] + ypred_res)
+		ytrue_pose.append(sample['ydata'].numpy())
 		del xdata, label, output, sample
 		gc.collect()
-	gt_labels = np.concatenate(gt_labels)
-	pred_labels = np.concatenate(pred_labels)
+	ytrue_cat = np.concatenate(ytrue_cat)
+	ypred_cat = np.concatenate(ypred_cat)
+	ytrue_pose = np.concatenate(ytrue_pose)
+	ypred_pose = np.concatenate(ypred_pose)
 	model.train()
-	return gt_labels, pred_labels
+	return ytrue_cat, ytrue_pose, ypred_cat, ypred_pose
 
 
 def save_checkpoint(filename):
@@ -168,15 +195,14 @@ def get_accuracy(ytrue, ypred, num_classes):
 	acc = np.zeros(num_classes)
 	for i in range(num_classes):
 		acc[i] = np.sum((ytrue == i)*(ypred == i))/np.sum(ytrue == i)
-	# print(acc)
-	# print('Mean: {0}'.format(np.mean(acc)))
 	return np.mean(acc)
 
 
-gt_labels, pred_labels = testing()
-spio.savemat(results_file, {'gt_labels': gt_labels, 'pred_labels': pred_labels})
-tmp_acc = get_accuracy(gt_labels, pred_labels, num_classes)
-print('Acc: {0}'.format(tmp_acc))
+ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
+spio.savemat(results_file, {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose})
+tmp_acc = get_accuracy(ytrue_cat, ypred_cat, num_classes)
+tmp_err = get_error2(ytrue_pose, ypred_pose, ytrue_cat, num_classes)
+print('Acc: {0} \t Err: {1}'.format(tmp_acc, tmp_err))
 
 for epoch in range(args.num_epochs):
 	tic = time.time()
@@ -186,12 +212,15 @@ for epoch in range(args.num_epochs):
 	# save model at end of epoch
 	save_checkpoint(model_file)
 	# validation
-	gt_labels, pred_labels = testing()
-	spio.savemat(results_file, {'gt_labels': gt_labels, 'pred_labels': pred_labels})
-	tmp_acc = get_accuracy(gt_labels, pred_labels, num_classes)
-	print('\nAcc: {0}'.format(tmp_acc))
+	ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
+	spio.savemat(results_file, {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose})
+	tmp_acc = get_accuracy(ytrue_cat, ypred_cat, num_classes)
+	tmp_err = get_error2(ytrue_pose, ypred_pose, ytrue_cat, num_classes)
+	print('Acc: {0} \t Err: {1}'.format(tmp_acc, tmp_err))
 	writer.add_scalar('val_acc', tmp_acc, count)
+	writer.add_scalar('val_err', tmp_err, count)
 	val_acc.append(tmp_acc)
+	val_err.append(tmp_err)
 	# time and output
 	toc = time.time() - tic
 	print('Epoch: {0} done in time {1}s'.format(epoch, toc))
@@ -199,4 +228,5 @@ for epoch in range(args.num_epochs):
 	gc.collect()
 writer.close()
 val_acc = np.stack(val_acc)
-spio.savemat(plots_file, {'val_acc': val_acc})
+val_err = np.stack(val_err)
+spio.savemat(plots_file, {'val_acc': val_acc, 'val_err': val_err})
