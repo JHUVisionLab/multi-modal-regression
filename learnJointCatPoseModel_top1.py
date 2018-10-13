@@ -7,6 +7,7 @@ import torch
 from torch import nn, optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 from dataGenerators import TestImages, my_collate
 from binDeltaGenerators import GBDGenerator
@@ -76,7 +77,7 @@ train_data = GBDGenerator(train_path, 'real', kmeans_file)
 test_data = TestImages(test_path)
 # setup data loaders
 train_loader = DataLoader(train_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
-test_loader = DataLoader(test_data, batch_size=16)
+test_loader = DataLoader(test_data, batch_size=32)
 print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
 
 # my_model
@@ -93,11 +94,27 @@ class JointCatPoseModel(nn.Module):
 		self.fc = nn.Linear(N0, num_classes).cuda()
 
 	def forward(self, x):
-		y1 = self.oracle_model.feature_model(x)
-		y1 = self.fc(y1)
-		label = torch.argmax(y1, dim=1, keepdim=True)
-		y2 = self.oracle_model(x, label)
-		return [y1, y2[0], y2[1]]   # cat, pose_bin, pose_delta
+		x = self.oracle_model.feature_model(x)
+		y0 = self.fc(x)
+		label = torch.argmax(y0, dim=1, keepdim=True)
+		label = torch.zeros(label.size(0), self.oracle_model.num_classes).scatter_(1, label.data.cpu(), 1.0)
+		label = Variable(label.unsqueeze(2).cuda())
+		if not args.multires:
+			y1 = torch.stack([self.oracle_model.bin_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
+			y2 = torch.stack([self.oracle_model.res_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
+			y1 = torch.squeeze(torch.bmm(y1, label), 2)
+			y2 = torch.squeeze(torch.bmm(y2, label), 2)
+		else:
+			y1 = torch.stack([self.oracle_model.bin_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
+			y2 = torch.stack([self.oracle_model.res_models[i](x) for i in range(self.oracle_model.num_classes * self.oracle_model.num_clusters)])
+			y2 = y2.view(self.oracle_model.num_classes, self.oracle_model.num_clusters, -1, self.oracle_model.ndim).permute(1, 2, 3, 0)
+			y1 = torch.squeeze(torch.bmm(y1, label), 2)
+			y2 = torch.squeeze(torch.matmul(y2, label), 3)
+			pose_label = torch.argmax(y1, dim=1, keepdim=True)
+			pose_label = torch.zeros(pose_label.size(0), self.oracle_model.num_clusters).scatter_(1, pose_label.data.cpu(), 1.0)
+			pose_label = Variable(pose_label.unsqueeze(2).cuda())
+			y2 = torch.squeeze(torch.bmm(y2.permute(1, 2, 0), pose_label), 2)
+		return [y0, y1, y2]   # cat, pose_bin, pose_delta
 
 
 model = JointCatPoseModel(orig_model)
