@@ -125,8 +125,14 @@ class JointCatPoseModel(nn.Module):
 model = JointCatPoseModel(orig_model)
 model.load_state_dict(torch.load(init_model_file))
 # print(model)
+
+
+def my_schedule(ep):
+	return 10**-(ep//10)/(1 + ep % 10)
+
+
 optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
-scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: 1/(1+ep))
+scheduler = optim.lr_scheduler.LambdaLR(optimizer, my_schedule)
 writer = SummaryWriter(log_dir)
 count = 0
 s = 0
