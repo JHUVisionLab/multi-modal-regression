@@ -163,7 +163,7 @@ def training():
 		ind = torch.argmax(output_bin, dim=1)
 		y = torch.index_select(cluster_centers_, 0, ind) + output_res
 		Lr = gve_loss(y, ydata)
-		loss = Lc_cat + Lc_pose + math.exp(-s)*Lr + s
+		loss = 0.1*Lc_cat + Lc_pose + math.exp(-s)*Lr + s
 		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
