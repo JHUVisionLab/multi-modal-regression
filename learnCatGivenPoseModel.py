@@ -30,7 +30,7 @@ parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--feature_network', type=str, default='resnet')
-parser.add_argument('--num_epochs', type=int, default=10)
+parser.add_argument('--num_epochs', type=int, default=20)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
 parser.add_argument('--init_lr', type=float, default=1e-4)
@@ -113,8 +113,14 @@ for param in model.bin_models.parameters():
 for param in model.res_models.parameters():
 	param.requires_grad = False
 # print(model)
+
+
+def my_schedule(ep):
+	return 10**-(ep//10)/(1 + ep % 10)
+
+
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.init_lr)
-scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: 1/(1+ep))
+scheduler = optim.lr_scheduler.LambdaLR(optimizer, my_schedule)
 writer = SummaryWriter(log_dir)
 count = 0
 val_acc = []
