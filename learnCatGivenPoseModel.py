@@ -106,7 +106,11 @@ class JointCatPoseModel(nn.Module):
 
 model = JointCatPoseModel(orig_model)
 # freeze the feature+pose part
-for param in model.oracle_model.parameters():
+for param in model.feature_model.parameters():
+	param.requires_grad = False
+for param in model.bin_models.parameters():
+	param.requires_grad = False
+for param in model.res_models.parameters():
 	param.requires_grad = False
 # print(model)
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.init_lr)
