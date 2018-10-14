@@ -30,10 +30,10 @@ parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--feature_network', type=str, default='resnet')
-parser.add_argument('--num_epochs', type=int, default=20)
+parser.add_argument('--num_epochs', type=int, default=10)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
-parser.add_argument('--init_lr', type=float, default=1e-3)
+parser.add_argument('--init_lr', type=float, default=1e-4)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -139,12 +139,12 @@ def training():
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
-		if i % 500 == 0:
-			gt_labels, pred_labels = testing()
-			spio.savemat(results_file, {'gt_labels': gt_labels, 'pred_labels': pred_labels})
-			tmp_acc = get_accuracy(gt_labels, pred_labels, num_classes)
-			writer.add_scalar('val_acc', tmp_acc, count)
-			val_acc.append(tmp_acc)
+		# if i % 500 == 0:
+		# 	gt_labels, pred_labels = testing()
+		# 	spio.savemat(results_file, {'gt_labels': gt_labels, 'pred_labels': pred_labels})
+		# 	tmp_acc = get_accuracy(gt_labels, pred_labels, num_classes)
+		# 	writer.add_scalar('val_acc', tmp_acc, count)
+		# 	val_acc.append(tmp_acc)
 		# cleanup
 		del xdata, label, output, loss
 		bar.update(i)
