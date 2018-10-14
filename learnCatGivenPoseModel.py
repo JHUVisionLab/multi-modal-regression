@@ -88,11 +88,18 @@ orig_model.load_state_dict(torch.load(init_model_file))
 class JointCatPoseModel(nn.Module):
 	def __init__(self, oracle_model):
 		super().__init__()
-		self.oracle_model = oracle_model
+		# old stuff
+		self.num_classes = oracle_model.num_classes
+		self.num_clusters = oracle_model.num_clusters
+		self.ndim = oracle_model.ndim
+		self.feature_model = oracle_model.feature_model
+		self.bin_models = oracle_model.bin_models
+		self.res_models = oracle_model.res_models
+		# new stuff
 		self.fc = nn.Linear(N0, num_classes).cuda()
 
 	def forward(self, x):
-		x = self.oracle_model.feature_model(x)
+		x = self.feature_model(x)
 		y = self.fc(x)
 		return y
 

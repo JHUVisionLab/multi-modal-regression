@@ -90,28 +90,35 @@ else:
 class JointCatPoseModel(nn.Module):
 	def __init__(self, oracle_model):
 		super().__init__()
-		self.oracle_model = oracle_model
+		# old stuff
+		self.num_classes = oracle_model.num_classes
+		self.num_clusters = oracle_model.num_clusters
+		self.ndim = oracle_model.ndim
+		self.feature_model = oracle_model.feature_model
+		self.bin_models = oracle_model.bin_models
+		self.res_models = oracle_model.res_models
+		# new stuff
 		self.fc = nn.Linear(N0, num_classes).cuda()
 
 	def forward(self, x):
-		x = self.oracle_model.feature_model(x)
+		x = self.feature_model(x)
 		y0 = self.fc(x)
 		label = torch.argmax(y0, dim=1, keepdim=True)
 		label = torch.zeros(label.size(0), self.oracle_model.num_classes).scatter_(1, label.data.cpu(), 1.0)
 		label = Variable(label.unsqueeze(2).cuda())
 		if not args.multires:
-			y1 = torch.stack([self.oracle_model.bin_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
-			y2 = torch.stack([self.oracle_model.res_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
+			y1 = torch.stack([self.bin_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
+			y2 = torch.stack([self.res_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
 			y1 = torch.squeeze(torch.bmm(y1, label), 2)
 			y2 = torch.squeeze(torch.bmm(y2, label), 2)
 		else:
-			y1 = torch.stack([self.oracle_model.bin_models[i](x) for i in range(self.oracle_model.num_classes)]).permute(1, 2, 0)
-			y2 = torch.stack([self.oracle_model.res_models[i](x) for i in range(self.oracle_model.num_classes * self.oracle_model.num_clusters)])
-			y2 = y2.view(self.oracle_model.num_classes, self.oracle_model.num_clusters, -1, self.oracle_model.ndim).permute(1, 2, 3, 0)
+			y1 = torch.stack([self.bin_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
+			y2 = torch.stack([self.res_models[i](x) for i in range(self.num_classes * self.num_clusters)])
+			y2 = y2.view(self.num_classes, self.num_clusters, -1, self.ndim).permute(1, 2, 3, 0)
 			y1 = torch.squeeze(torch.bmm(y1, label), 2)
 			y2 = torch.squeeze(torch.matmul(y2, label), 3)
 			pose_label = torch.argmax(y1, dim=1, keepdim=True)
-			pose_label = torch.zeros(pose_label.size(0), self.oracle_model.num_clusters).scatter_(1, pose_label.data.cpu(), 1.0)
+			pose_label = torch.zeros(pose_label.size(0), self.num_clusters).scatter_(1, pose_label.data.cpu(), 1.0)
 			pose_label = Variable(pose_label.unsqueeze(2).cuda())
 			y2 = torch.squeeze(torch.bmm(y2.permute(1, 2, 0), pose_label), 2)
 		return [y0, y1, y2]   # cat, pose_bin, pose_delta
