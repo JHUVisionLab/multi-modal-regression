@@ -106,10 +106,13 @@ class JointCatPoseModel(nn.Module):
 
 model = JointCatPoseModel(orig_model)
 # freeze the feature+pose part
+model.feature_model.eval()
 for param in model.feature_model.parameters():
 	param.requires_grad = False
+model.bin_models.eval()
 for param in model.bin_models.parameters():
 	param.requires_grad = False
+model.res_models.eval()
 for param in model.res_models.parameters():
 	param.requires_grad = False
 # print(model)
@@ -128,7 +131,7 @@ val_acc = []
 
 def training():
 	global count, val_acc
-	model.train()
+	# model.train()
 	bar = progressbar.ProgressBar(max_value=len(train_loader))
 	for i, sample in enumerate(train_loader):
 		# forward steps
@@ -158,7 +161,7 @@ def training():
 
 
 def testing():
-	model.eval()
+	# model.eval()
 	gt_labels = []
 	pred_labels = []
 	for i, sample in enumerate(test_loader):
@@ -172,7 +175,7 @@ def testing():
 		gc.collect()
 	gt_labels = np.concatenate(gt_labels)
 	pred_labels = np.concatenate(pred_labels)
-	model.train()
+	# model.train()
 	return gt_labels, pred_labels
 
 
