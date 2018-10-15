@@ -87,7 +87,7 @@ class JointCatPoseModel(nn.Module):
 			if not args.multires:
 				yres = self.res_models[i](x)
 			else:
-				pose_label = torch.zeros(ind.size(0), self.num_clusters).scatter_(1, ind.data.cpu(), 1.0)
+				pose_label = torch.zeros(ind.size(0), self.num_clusters).scatter_(1, ind.unsqueeze(1).data.cpu(), 1.0)
 				pose_label = Variable(pose_label.unsqueeze(2).cuda())
 				yres = []
 				for j in range(self.num_clusters):
@@ -115,7 +115,7 @@ def testing():
 		output = model(xdata)
 		output_cat = output[0].data.cpu().numpy()
 		output_pose = output[1].data.cpu().numpy()
-		print(i, output_cat.shape, output_pose.shape)
+		# print(i, output_cat.shape, output_pose.shape)
 		tmp_labels = np.argmax(output_cat, axis=1)
 		ypred_cat.append(tmp_labels)
 		ytrue_cat.append(sample['label'].squeeze().numpy())
@@ -130,13 +130,16 @@ def testing():
 	return ytrue_cat, ytrue_pose, ypred_cat, ypred_pose
 
 
+print('pose')
 ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
 pose_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
 
+print('cat given pose')
 model.load_state_dict(torch.load(cat_model_file))
 ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
 cat_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
 
+print('joint cat pose (top1)')
 model.load_state_dict(torch.load(model_file))
 ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
 joint_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
