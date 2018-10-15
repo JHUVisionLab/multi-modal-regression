@@ -33,7 +33,7 @@ parser.add_argument('--feature_network', type=str, default='resnet')
 parser.add_argument('--num_epochs', type=int, default=20)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
-parser.add_argument('--init_lr', type=float, default=1e-4)
+parser.add_argument('--init_lr', type=float, default=1e-3)
 args = parser.parse_args()
 print(args)
 # assign GPU

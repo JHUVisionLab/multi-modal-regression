@@ -24,10 +24,8 @@ parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--feature_network', type=str, default='resnet')
-parser.add_argument('--num_epochs', type=int, default=20)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
-parser.add_argument('--init_lr', type=float, default=1e-5)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -96,9 +94,11 @@ class JointCatPoseModel(nn.Module):
 					yres.append(self.res_models[i * self.num_clusters + j](x))
 				yres = torch.stack(yres).permute(1, 2, 0)
 				yres = torch.squeeze(torch.bmm(yres, pose_label), 2)
+				del pose_label
 			y = cluster_centers_.index_select(0, ind) + yres
 			ypred.append(y)
 		y1 = torch.stack(ypred).permute(1, 2, 0)
+		del ypred, ybin, ind, yres, y
 		return [y0, y1]   # cat, pose
 
 
@@ -113,14 +113,15 @@ def testing():
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		output = model(xdata)
-		output_cat = output[0]
-		output_pose = output[1]
-		tmp_labels = np.argmax(output_cat.data.cpu().numpy(), axis=1)
+		output_cat = output[0].data.cpu().numpy()
+		output_pose = output[1].data.cpu().numpy()
+		print(i, output_cat.shape, output_pose.shape)
+		tmp_labels = np.argmax(output_cat, axis=1)
 		ypred_cat.append(tmp_labels)
 		ytrue_cat.append(sample['label'].squeeze().numpy())
 		ypred_pose.append(output_pose)
 		ytrue_pose.append(sample['ydata'].numpy())
-		del xdata, output, sample, output_cat, output_pose
+		del xdata, output, sample, output_cat, output_pose, tmp_labels
 		gc.collect()
 	ytrue_cat = np.concatenate(ytrue_cat)
 	ypred_cat = np.concatenate(ypred_cat)
@@ -140,5 +141,5 @@ model.load_state_dict(torch.load(model_file))
 ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
 joint_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
 
-spio.savemat(results_file + '_cat', {'pose_results': pose_results, 'cat_results': cat_results, 'joint_results': joint_results})
+spio.savemat(results_file, {'pose_results': pose_results, 'cat_results': cat_results, 'joint_results': joint_results})
 

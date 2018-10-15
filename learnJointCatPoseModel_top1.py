@@ -104,7 +104,7 @@ class JointCatPoseModel(nn.Module):
 		x = self.feature_model(x)
 		y0 = self.fc(x)
 		label = torch.argmax(y0, dim=1, keepdim=True)
-		label = torch.zeros(label.size(0), self.oracle_model.num_classes).scatter_(1, label.data.cpu(), 1.0)
+		label = torch.zeros(label.size(0), self.num_classes).scatter_(1, label.data.cpu(), 1.0)
 		label = Variable(label.unsqueeze(2).cuda())
 		if not args.multires:
 			y1 = torch.stack([self.bin_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
