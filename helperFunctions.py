@@ -6,9 +6,10 @@ Numpy and Scipy script files that are common to both Keras+TF and PyTorch
 import numpy as np
 import re
 from scipy.spatial.distance import cdist
+import torch
 from torch.optim import Optimizer
 
-__all__ = ['classes', 'eps', 'parse_name', 'rotation_matrix', 'get_gamma']
+__all__ = ['classes', 'eps', 'parse_name', 'rotation_matrix', 'get_gamma', 'get_accuracy']
 
 
 # object categories of interest
@@ -117,3 +118,12 @@ class mySGD(Optimizer):
 				p.data.add_(-step_size, d_p)
 
 		return loss
+
+
+def get_accuracy(ytrue, ypred, num_classes):
+	# print(ytrue.shape, ypred.shape)
+	acc = np.zeros(num_classes)
+	for i in range(num_classes):
+		acc[i] = np.sum((ytrue == i)*(ypred == i))/np.sum(ytrue == i)
+	return np.mean(acc)
+
