@@ -13,7 +13,7 @@ from dataGenerators import TestImages, my_collate
 from binDeltaGenerators import GBDGenerator
 from binDeltaModels import OneBinDeltaModel, OneDeltaPerBinModel
 from axisAngle import get_error2, geodesic_loss
-from helperFunctions import classes
+from helperFunctions import classes, get_accuracy
 
 import numpy as np
 import math
@@ -216,13 +216,6 @@ def testing():
 
 def save_checkpoint(filename):
 	torch.save(model.state_dict(), filename)
-
-
-def get_accuracy(ytrue, ypred, num_classes):
-	acc = np.zeros(num_classes)
-	for i in range(num_classes):
-		acc[i] = np.sum((ytrue == i)*(ypred == i))/np.sum(ytrue == i)
-	return np.mean(acc)
 
 
 ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
