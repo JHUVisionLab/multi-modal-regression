@@ -17,6 +17,7 @@ import gc
 import os
 import pickle
 import argparse
+import progressbar
 
 parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
 parser.add_argument('--gpu_id', type=str, default='0')
@@ -34,8 +35,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 # save stuff here
 oracale_model_file = os.path.join('models', args.save_str + '.tar')
 cat_model_file = os.path.join('models', args.save_str + '_cat.tar')
-model_file = os.path.join('models', args.save_str + '_top1.tar')
-results_file = os.path.join('results', args.save_str + '_top1_' + args.db_type + '_analysis')
+model_file_top1 = os.path.join('models', args.save_str + '_top1.tar')
+model_file_wgt = os.path.join('models', args.save_str + '_wgt.tar')
+results_file = os.path.join('results', args.save_str + '_' + args.db_type + '_analysis')
 
 # kmeans data
 kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
@@ -110,6 +112,7 @@ model.eval()
 def testing():
 	ytrue_cat, ytrue_pose = [], []
 	ypred_cat, ypred_pose = [], []
+	bar = progressbar.ProgressBar(max_value=len(test_loader))
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		output = model(xdata)
@@ -123,6 +126,7 @@ def testing():
 		ytrue_pose.append(sample['ydata'].numpy())
 		del xdata, output, sample, output_cat, output_pose, tmp_labels
 		gc.collect()
+		bar.update(i+1)
 	ytrue_cat = np.concatenate(ytrue_cat)
 	ypred_cat = np.concatenate(ypred_cat)
 	ytrue_pose = np.concatenate(ytrue_pose)
@@ -133,16 +137,25 @@ def testing():
 print('pose')
 ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
 pose_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
+print('\n')
 
 print('cat given pose')
 model.load_state_dict(torch.load(cat_model_file))
 ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
 cat_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
+print('\n')
 
 print('joint cat pose (top1)')
-model.load_state_dict(torch.load(model_file))
+model.load_state_dict(torch.load(model_file_top1))
 ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
-joint_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
+top1_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
+print('\n')
 
-spio.savemat(results_file, {'pose_results': pose_results, 'cat_results': cat_results, 'joint_results': joint_results})
+print('joint cat pose (wgt)')
+model.load_state_dict(torch.load(model_file_wgt))
+ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
+wgt_results = {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose}
+print('\n')
 
+spio.savemat(results_file, {'pose_results': pose_results, 'cat_results': cat_results,
+                            'top1_results': top1_results, 'wgt_results': wgt_results})
