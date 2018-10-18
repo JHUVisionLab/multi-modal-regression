@@ -36,7 +36,7 @@ parser.add_argument('--feature_network', type=str, default='resnet')
 parser.add_argument('--num_epochs', type=int, default=20)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
-parser.add_argument('--init_lr', type=float, default=1e-5)
+parser.add_argument('--init_lr', type=float, default=1e-4)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -87,7 +87,7 @@ if not args.multires:
 else:
 	orig_model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, N3, ndim)
 orig_model.load_state_dict(torch.load(init_model_file))
-resnet_model = models.resnet50(pretrained=True)
+resnet_model = models.resnet50(pretrained=True).cuda()
 
 
 class JointCatPoseModel(nn.Module):

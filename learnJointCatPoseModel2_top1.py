@@ -86,7 +86,7 @@ if not args.multires:
 else:
 	orig_model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, N0, N1, N2, N3, ndim)
 orig_model.load_state_dict(torch.load(init_model_file))
-resnet_model = models.resnet50(pretrained=True)
+resnet_model = models.resnet50(pretrained=True).cuda()
 
 
 class JointCatPoseModel(nn.Module):
