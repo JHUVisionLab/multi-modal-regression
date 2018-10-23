@@ -35,6 +35,7 @@ parser.add_argument('--num_epochs', type=int, default=50)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
 parser.add_argument('--init_lr', type=float, default=1e-4)
+parser.add_argument('--alpha', type=float, default=1)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -137,13 +138,12 @@ optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
 scheduler = optim.lr_scheduler.LambdaLR(optimizer, my_schedule)
 writer = SummaryWriter(log_dir)
 count = 0
-s = 0
 val_err = []
 val_acc = []
 
 
 def training():
-	global count, s, val_acc, val_err
+	global count, val_acc, val_err
 	model.train()
 	bar = progressbar.ProgressBar(max_value=len(train_loader))
 	for i, sample in enumerate(train_loader):
@@ -163,7 +163,7 @@ def training():
 		ind = torch.argmax(output_bin, dim=1)
 		y = torch.index_select(cluster_centers_, 0, ind) + output_res
 		Lr = gve_loss(y, ydata)
-		loss = 0.1*Lc_cat + Lc_pose + math.exp(-s)*Lr + s
+		loss = 0.1*Lc_cat + Lc_pose + args.alpha*Lr
 		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
@@ -173,7 +173,7 @@ def training():
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
 		writer.add_scalar('alpha', math.exp(-s), count)
-		if i % 500 == 0:
+		if i % 1000 == 0:
 			ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
 			spio.savemat(results_file, {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose})
 			tmp_acc = get_accuracy(ytrue_cat, ypred_cat, num_classes)
