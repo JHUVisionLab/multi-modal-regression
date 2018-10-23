@@ -103,7 +103,7 @@ class OneBinDeltaModel(nn.Module):
 		self.num_clusters = num_clusters
 		self.ndim = ndim
 		if feature_network == 'resnet':
-			self.feature_model = resnet_model('resnet50', 'layer3').cuda()
+			self.feature_model = resnet_model('resnet50', 'layer4').cuda()
 		elif feature_network == 'vgg':
 			self.feature_model = vgg_model('vgg13', 'fc6').cuda()
 		self.bin_models = nn.ModuleList([bin_3layer(N0, N1, N2, num_clusters) for i in range(self.num_classes)]).cuda()
@@ -128,7 +128,7 @@ class OneDeltaPerBinModel(nn.Module):
 		self.num_clusters = num_clusters
 		self.ndim = ndim
 		if feature_network == 'resnet':
-			self.feature_model = resnet_model('resnet50', 'layer3').cuda()
+			self.feature_model = resnet_model('resnet50', 'layer4').cuda()
 		elif feature_network == 'vgg':
 			self.feature_model = vgg_model('vgg13', 'fc6').cuda()
 		self.bin_models = nn.ModuleList([bin_3layer(N0, N1, N2, num_clusters) for i in range(self.num_classes)]).cuda()

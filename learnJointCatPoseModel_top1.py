@@ -31,10 +31,10 @@ parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--feature_network', type=str, default='resnet')
-parser.add_argument('--num_epochs', type=int, default=20)
+parser.add_argument('--num_epochs', type=int, default=50)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--db_type', type=str, default='clean')
-parser.add_argument('--init_lr', type=float, default=1e-5)
+parser.add_argument('--init_lr', type=float, default=1e-4)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -129,7 +129,8 @@ model.load_state_dict(torch.load(init_model_file))
 
 
 def my_schedule(ep):
-	return 10**-(ep//10)/(1 + ep % 10)
+	return 1. / (1. + ep)
+	# return 10**-(ep//10)/(1 + ep % 10)
 
 
 optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
