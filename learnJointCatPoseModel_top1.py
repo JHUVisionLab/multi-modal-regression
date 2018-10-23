@@ -15,7 +15,6 @@ from axisAngle import get_error2, geodesic_loss
 from helperFunctions import classes, get_accuracy
 
 import numpy as np
-import math
 import scipy.io as spio
 import gc
 import os
@@ -64,7 +63,8 @@ if args.db_type == 'clean':
 else:
 	db_path = 'data/flipped_all'
 num_classes = len(classes)
-train_path = os.path.join(db_path, 'train')
+real_path = os.path.join(db_path, 'train')
+render_path = 'data/renderforcnn'
 test_path = os.path.join(db_path, 'test')
 
 # loss
@@ -73,12 +73,15 @@ gve_loss = geodesic_loss().cuda()
 
 # DATA
 # datasets
-train_data = GBDGenerator(train_path, 'real', kmeans_file)
+real_data = GBDGenerator(real_path, 'real', kmeans_file)
+render_data = GBDGenerator(render_path, 'render', kmeans_file)
 test_data = TestImages(test_path)
 # setup data loaders
-train_loader = DataLoader(train_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
+real_loader = DataLoader(real_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
+render_loader = DataLoader(render_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
 test_loader = DataLoader(test_data, batch_size=32)
-print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
+print('Real: {0} \t Render: {1} \t Test: {2}'.format(len(real_loader), len(render_loader), len(test_loader)))
+max_iterations = min(len(real_loader), len(render_loader))
 
 # my_model
 if not args.multires:
@@ -145,34 +148,44 @@ val_acc = []
 def training():
 	global count, val_acc, val_err
 	model.train()
-	bar = progressbar.ProgressBar(max_value=len(train_loader))
-	for i, sample in enumerate(train_loader):
+	bar = progressbar.ProgressBar(max_value=max_iterations)
+	for i, (sample_real, sample_render) in enumerate(zip(real_loader, render_loader)):
 		# forward steps
 		# output
-		label = Variable(sample['label'].squeeze().cuda())
-		ydata_bin = Variable(sample['ydata_bin'].cuda())
-		ydata = Variable(sample['ydata'].cuda())
-		xdata = Variable(sample['xdata'].cuda())
-		output = model(xdata)
-		output_cat = output[0]
-		output_bin = output[1]
-		output_res = output[2]
+		label_real = Variable(sample_real['label'].squeeze().cuda())
+		ydata_bin_real = Variable(sample_real['ydata_bin'].cuda())
+		ydata_real = Variable(sample_real['ydata'].cuda())
+		xdata_real = Variable(sample_real['xdata'].cuda())
+		output_real = model(xdata_real)
+		output_cat_real = output_real[0]
+		output_bin_real = output_real[1]
+		output_res_real = output_real[2]
+		label_render = Variable(sample_render['label'].squeeze().cuda())
+		ydata_bin_render = Variable(sample_render['ydata_bin'].cuda())
+		ydata_render = Variable(sample_render['ydata'].cuda())
+		xdata_render = Variable(sample_render['xdata'].cuda())
+		output_render = model(xdata_render)
+		output_cat_render = output_render[0]
+		output_bin_render = output_render[1]
+		output_res_render = output_render[2]
+		output_bin = torch.cat((output_bin_real, output_bin_render))
+		output_res = torch.cat((output_res_real, output_res_render))
+		ydata_bin = torch.cat((ydata_bin_real, ydata_bin_render))
+		ydata = torch.cat((ydata_real, ydata_render))
 		# loss
-		Lc_cat = ce_loss(output_cat, label)
-		Lc_pose = ce_loss(output_bin, ydata_bin)
+		Lc_cat = ce_loss(output_cat_real, label_real)   # use only real images for category loss
+		Lc_pose = ce_loss(output_bin, ydata_bin)        # use all images for pose loss - bin part
 		ind = torch.argmax(output_bin, dim=1)
 		y = torch.index_select(cluster_centers_, 0, ind) + output_res
-		Lr = gve_loss(y, ydata)
+		Lr = gve_loss(y, ydata)                         # gve loss on final pose
 		loss = 0.1*Lc_cat + Lc_pose + args.alpha*Lr
 		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
-		s = math.log(Lr)
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
-		writer.add_scalar('alpha', math.exp(-s), count)
 		if i % 1000 == 0:
 			ytrue_cat, ytrue_pose, ypred_cat, ypred_pose = testing()
 			spio.savemat(results_file, {'ytrue_cat': ytrue_cat, 'ytrue_pose': ytrue_pose, 'ypred_cat': ypred_cat, 'ypred_pose': ypred_pose})
@@ -183,9 +196,12 @@ def training():
 			val_acc.append(tmp_acc)
 			val_err.append(tmp_err)
 		# cleanup
-		del xdata, label, output, loss, output_cat, output_bin, output_res
+		del label_real, ydata_bin_real, ydata_real, xdata_real, output_real, output_res_real, output_bin_real, output_cat_real
+		del label_render, ydata_bin_render, ydata_render, xdata_render, output_render, output_res_render, output_bin_render, output_cat_render
+		del	output_bin, output_res, ydata_bin, ydata, Lc_cat, Lc_pose, Lr, loss
 		bar.update(i+1)
-	train_loader.dataset.shuffle_images()
+	real_loader.dataset.shuffle_images()
+	render_loader.dataset.shuffle_images()
 
 
 def testing():
