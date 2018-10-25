@@ -111,24 +111,23 @@ class JointCatPoseModel(nn.Module):
 		y1 = torch.stack([self.bin_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
 		Pl = F.softmax(y1, dim=1)
 		Plc = Pl * torch.unsqueeze(Pc, dim=1)
-		ind = torch.argmax(Plc.view(x.size(0), -1), dim=1)
+		ind = torch.argmax(Plc.view(x.size(0), -1), dim=1, keepdim=True)
 		ip = ind/self.num_classes
 		ic = torch.fmod(ind, self.num_classes)
 		label = torch.zeros(ic.size(0), self.num_classes).scatter_(1, ic.data.cpu(), 1.0)
 		label = Variable(label.unsqueeze(2).cuda())
+		y1 = torch.squeeze(torch.bmm(y1, label), 2)
 		if not args.multires:
 			y2 = torch.stack([self.res_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
-			y1 = torch.squeeze(torch.bmm(y1, label), 2)
 			y2 = torch.squeeze(torch.bmm(y2, label), 2)
 		else:
 			y2 = torch.stack([self.res_models[i](x) for i in range(self.num_classes * self.num_clusters)])
 			y2 = y2.view(self.num_classes, self.num_clusters, -1, self.ndim).permute(1, 2, 3, 0)
-			y1 = torch.squeeze(torch.bmm(y1, label), 2)
 			y2 = torch.squeeze(torch.matmul(y2, label), 3)
 			pose_label = torch.zeros(ip.size(0), self.num_clusters).scatter_(1, ip.data.cpu(), 1.0)
 			pose_label = Variable(pose_label.unsqueeze(2).cuda())
 			y2 = torch.squeeze(torch.bmm(y2.permute(1, 2, 0), pose_label), 2)
-		return [y0, y1, y2]   # cat, pose_bin, pose_delta
+		return [y0, y1, y2, Plc]   # cat, pose_bin, pose_delta
 
 
 model = JointCatPoseModel(orig_model)
@@ -218,10 +217,8 @@ def testing():
 		output_cat = output[0]
 		output_bin = output[1]
 		output_res = output[2]
-		Pc = F.softmax(output_cat, dim=1)
-		Pl = F.softmax(output_bin, dim=1)
-		Plc = Pl * torch.unsqueeze(Pc, dim=1)
-		ind = torch.argmax(Plc.view(xdata.size(0), -1), dim=1)
+		joint_probs = output[3]
+		ind = torch.argmax(joint_probs.view(xdata.size(0), -1), dim=1)
 		ip = ind/num_classes
 		ic = torch.fmod(ind, num_classes)
 		tmp_labels = ic.data.cpu().numpy()
@@ -232,7 +229,7 @@ def testing():
 		ypred_res = output_res.data.cpu().numpy()
 		ypred_pose.append(kmeans_dict[ypred_bin, :] + ypred_res)
 		ytrue_pose.append(sample['ydata'].numpy())
-		del xdata, label, output, sample, output_cat, output_bin, output_res, Pc, Pl, Plc, ind, ip, ic
+		del xdata, label, output, sample, output_cat, output_bin, output_res, joint_probs, ind, ip, ic
 		gc.collect()
 	ytrue_cat = np.concatenate(ytrue_cat)
 	ypred_cat = np.concatenate(ypred_cat)
