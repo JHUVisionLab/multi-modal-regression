@@ -8,7 +8,6 @@ from torch import nn, optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
-from torchvision import models
 
 from dataGenerators import TestImages, my_collate, ImagesAll
 from featureModels import resnet_model
@@ -29,7 +28,6 @@ parser = argparse.ArgumentParser(description='Geodesic Regression Model')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--num_workers', type=int, default=4)
-parser.add_argument('--feature_network', type=str, default='resnet')
 parser.add_argument('--num_epochs', type=int, default=50)
 parser.add_argument('--db_type', type=str, default='clean')
 parser.add_argument('--init_lr', type=float, default=1e-4)
@@ -39,7 +37,7 @@ print(args)
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # save stuff here
-init_model_file = os.path.join('models', args.save_str + '.tar')
+init_model_file = os.path.join('models', args.save_str + '_cat.tar')
 model_file = os.path.join('models', args.save_str + '_wgt.tar')
 results_file = os.path.join('results', args.save_str + '_wgt_' + args.db_type)
 plots_file = os.path.join('plots', args.save_str + '_wgt_' + args.db_type)
@@ -47,7 +45,7 @@ log_dir = os.path.join('logs', args.save_str + '_wgt_' + args.db_type)
 
 # relevant variables
 ndim = 3
-N0, N1, N2, N3 = 1024, 1000, 500, 2048
+N0, N1, N2 = 2048, 1000, 500
 num_classes = len(classes)
 if args.db_type == 'clean':
 	db_path = 'data/flipped_new'
@@ -76,12 +74,12 @@ max_iterations = min(len(real_loader), len(render_loader))
 
 
 # my_model
-class PoseGivenCatModel(nn.Module):
+class RegressionModel(nn.Module):
 	def __init__(self):
 		super().__init__()
 		self.num_classes = num_classes
-		self.feature_model = resnet_model('resnet50', 'layer3').cuda()
-		self.pose_models = nn.ModuleList([model_3layer(N0, N1, N2, 3) for i in range(self.num_classes)]).cuda()
+		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
+		self.pose_models = nn.ModuleList([model_3layer(N0, N1, N2, ndim) for i in range(self.num_classes)]).cuda()
 
 	def forward(self, x, label):
 		x = self.feature_model(x)
@@ -95,34 +93,28 @@ class PoseGivenCatModel(nn.Module):
 
 
 class JointCatPoseModel(nn.Module):
-	def __init__(self):
+	def __init__(self, oracle_model):
 		super().__init__()
-		self.num_classes = num_classes
-		init_model = PoseGivenCatModel()
-		init_model.load_state_dict(torch.load(init_model_file))
-		self.features = init_model.feature_model.features
-		self.avgpool1 = init_model.feature_model.avgpool
-		self.pose_models = init_model.pose_models
-		resnet50 = models.resnet50(pretrained=True).cuda()
-		self.layer4 = resnet50.layer4
-		self.avgpool2 = resnet50.avgpool
-		self.fc = nn.Linear(N3, num_classes)
+		# old stuff
+		self.num_classes = oracle_model.num_classes
+		self.ndim = oracle_model.ndim
+		self.feature_model = oracle_model.feature_model
+		self.pose_models = oracle_model.pose_models
+		self.fc = nn.Linear(N0, num_classes).cuda()
 
 	def forward(self, x):
-		x = self.features(x)
-		x1 = self.layer4(x)
-		x1 = self.avgpool2(x1)
-		x1 = x1.view(x1.size(0), -1)
-		y1 = self.fc(x1)
-		x2 = self.avgpool1(x)
-		x2 = x2.view(x2.size(0), -1)
-		y2 = torch.stack([self.pose_models[i](x2) for i in range(self.num_classes)]).permute(1, 2, 0)
-		y2 = torch.squeeze(torch.bmm(y2, y1.unsqueeze(2)), 2)
-		y2 = np.pi*F.tanh(y2)
-		return [y1, y2]
+		x = self.feature_model(x)
+		y0 = self.fc(x)
+		label = torch.unsqueeze(F.softmax(y0, dim=1), dim=2)
+		y1 = torch.stack([self.pose_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
+		y1 = torch.squeeze(torch.bmm(y1, label), 2)
+		y1 = np.pi*F.tanh(y1)
+		return [y0, y1]   # cat, pose
 
 
-model = JointCatPoseModel()
+orig_model = RegressionModel()
+model = JointCatPoseModel(orig_model)
+model.load_state_dict(torch.load(init_model_file))
 # print(model)
 
 
