@@ -125,6 +125,6 @@ def get_accuracy(ytrue, ypred, num_classes):
 	acc = np.zeros(num_classes)
 	for i in range(num_classes):
 		acc[i] = np.sum((ytrue == i)*(ypred == i))/np.sum(ytrue == i)
-	print(acc)
+	# print(acc)
 	return np.mean(acc)
 
