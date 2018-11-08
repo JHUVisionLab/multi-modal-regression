@@ -91,7 +91,7 @@ def get_error2(ygt, yhat, labels, num):
 		ind = (labels == i)
 		# print(ind.shape)
 		medErr[i] = np.median(err[ind])
-	print(medErr)
+	# print(medErr)
 	return np.mean(medErr)
 
 
