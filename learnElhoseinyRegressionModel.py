@@ -80,7 +80,7 @@ class ElhoseinyModel(nn.Module):
 		elif args.feature_network == 'vgg':
 			self.feature_model = vgg_model('vgg13', 'fc6').cuda()
 		self.pose_model = model_3layer(args.N0, args.N1, args.N2, ndim).cuda()
-		self.category_model = nn.Linear(args.N0, num_classes)
+		self.category_model = nn.Linear(args.N0, num_classes).cuda()
 
 	def forward(self, x):
 		x = self.feature_model(x)
@@ -121,7 +121,7 @@ def training_init():
 		gt_pose = torch.cat((ydata_real, ydata_render))
 		Lr = mse_loss(output_pose, gt_pose)
 		Lc = ce_loss(output_real[0], label_real.squeeze())
-		loss = 0.1*Lc + Lr
+		loss = Lc + Lr
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()

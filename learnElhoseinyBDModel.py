@@ -138,7 +138,7 @@ def training_init():
 		label_render = Variable(sample_render['label'].cuda())
 		ydata_bin_render = Variable(sample_render['ydata_bin'].cuda())
 		ydata_res_render = Variable(sample_render['ydata_res'].cuda())
-		output_render = model(xdata_render, label_render)
+		output_render = model(xdata_render)
 		# loss
 		ydata_bin = torch.cat((ydata_bin_real, ydata_bin_render))
 		ydata_res = torch.cat((ydata_res_real, ydata_res_render))
