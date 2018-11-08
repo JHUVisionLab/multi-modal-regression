@@ -37,7 +37,7 @@ print(args)
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # save stuff here
-init_model_file = os.path.join('models', args.save_str + 'cat.tar')
+init_model_file = os.path.join('models', args.save_str + '_cat.tar')
 model_file = os.path.join('models', args.save_str + '_top1.tar')
 results_file = os.path.join('results', args.save_str + '_top1_' + args.db_type)
 plots_file = os.path.join('plots', args.save_str + '_top1_' + args.db_type)
@@ -78,6 +78,7 @@ class RegressionModel(nn.Module):
 	def __init__(self):
 		super().__init__()
 		self.num_classes = num_classes
+		self.ndim = ndim
 		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
 		self.pose_models = nn.ModuleList([model_3layer(N0, N1, N2, ndim) for i in range(self.num_classes)]).cuda()
 

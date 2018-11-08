@@ -78,6 +78,7 @@ class RegressionModel(nn.Module):
 	def __init__(self):
 		super().__init__()
 		self.num_classes = num_classes
+		self.ndim = ndim
 		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
 		self.pose_models = nn.ModuleList([model_3layer(N0, N1, N2, ndim) for i in range(self.num_classes)]).cuda()
 
