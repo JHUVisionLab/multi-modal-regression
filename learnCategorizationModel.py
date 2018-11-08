@@ -61,6 +61,9 @@ class my_model(nn.Module):
 
 
 model = my_model()
+for param in model.feature_model.parameters():
+	param.requires_grad = False
+model.eval()
 # print(model)
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=init_lr)
 scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: 1./(1. + ep))
@@ -69,7 +72,7 @@ criterion = nn.CrossEntropyLoss().cuda()
 
 # OPTIMIZATION functions
 def training():
-	model.train()
+	# model.train()
 	bar = progressbar.ProgressBar(max_value=len(train_loader))
 	for i, sample in enumerate(train_loader):
 		# forward steps
@@ -82,10 +85,6 @@ def training():
 		optimizer.step()
 		# store
 		bar.update(i)
-		if i % 200 == 0:
-			ygt, ypred = testing()
-			print('Acc: {0}'.format(get_accuracy(ygt, ypred, num_classes)))
-			spio.savemat(results_file, {'ygt': ygt, 'ypred': ypred})
 		# cleanup
 		del xdata, ydata, output, loss, sample
 		gc.collect()
@@ -93,7 +92,7 @@ def training():
 
 
 def testing():
-	model.eval()
+	# model.eval()
 	ypred = []
 	ytrue = []
 	for i, sample in enumerate(test_loader):
@@ -106,7 +105,7 @@ def testing():
 		gc.collect()
 	ypred = np.concatenate(ypred)
 	ytrue = np.concatenate(ytrue)
-	model.train()
+	# model.train()
 	return ytrue, ypred
 
 
