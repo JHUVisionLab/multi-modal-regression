@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Geodesic Bin and Delta model for the axis-angle representation
+Evaluate on detected bboxes using Geodesic regression and
+Geodesic Bin and Delta models for the axis-angle representation
 """
 
 import torch
 from torch.autograd import Variable
+import torch.nn as nn
+import torch.nn.functional as F
 
 from dataGenerators import Dataset, preprocess_real
 from binDeltaModels import OneBinDeltaModel, OneDeltaPerBinModel
+from featureModels import resnet_model, vgg_model
+from poseModels import model_3layer
 from helperFunctions import classes
 
 import numpy as np
@@ -17,7 +22,7 @@ import pickle
 import argparse
 import progressbar
 
-parser = argparse.ArgumentParser(description='Geodesic Bin & Delta Model')
+parser = argparse.ArgumentParser(description='Evaluate on Detections')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
@@ -28,6 +33,7 @@ parser.add_argument('--N2', type=int, default=500)
 parser.add_argument('--N3', type=int, default=100)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--batch_size', type=int, default=32)
+parser.add_argument('--model_type', type=str, default='bd')
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -58,23 +64,51 @@ class DetImages(Dataset):
 		return sample
 
 
-# kmeans data
-kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
-kmeans = pickle.load(open(kmeans_file, 'rb'))
-kmeans_dict = kmeans.cluster_centers_
-num_clusters = kmeans.n_clusters
-
 # relevant variables
 ndim = 3
 num_classes = len(classes)
 
+
 # my_model
-model_file = os.path.join('models', args.save_str + '.tar')
-if not args.multires:
-	model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+class RegressionModel(nn.Module):
+	def __init__(self):
+		super().__init__()
+		self.num_classes = num_classes
+		if args.feature_network == 'resnet':
+			self.feature_model = resnet_model('resnet50', 'layer4').cuda()
+		elif args.feature_network == 'vgg':
+			self.feature_model = vgg_model('vgg13', 'fc6').cuda()
+		self.pose_models = nn.ModuleList(
+			[model_3layer(args.N0, args.N1, args.N2, ndim) for i in range(self.num_classes)]).cuda()
+
+	def forward(self, x, label):
+		x = self.feature_model(x)
+		x = torch.stack([self.pose_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
+		label = torch.zeros(label.size(0), self.num_classes).scatter_(1, label.data.cpu(), 1.0)
+		label = Variable(label.unsqueeze(2).cuda())
+		y = torch.squeeze(torch.bmm(x, label), 2)
+		y = np.pi * F.tanh(y)
+		del x, label
+		return y
+
+
+if args.model_type == 'bd':
+	# kmeans data
+	kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
+	kmeans = pickle.load(open(kmeans_file, 'rb'))
+	kmeans_dict = kmeans.cluster_centers_
+	num_clusters = kmeans.n_clusters
+
+	# my_model
+	if not args.multires:
+		model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+	else:
+		model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
 else:
-	model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
+	model = RegressionModel()
+
 # load model
+model_file = os.path.join('models', args.save_str + '.tar')
 model.load_state_dict(torch.load(model_file))
 
 
@@ -111,18 +145,18 @@ def testing(det_path):
 	return bbox, ypred, labels
 
 
-# # evaluate the model
-# bbox, ypred, labels = testing('data/vk_dets')
-# results_file = os.path.join('results', args.save_str + '_vk_dets')
-# spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+# evaluate the model
+bbox, ypred, labels = testing('data/vk_dets')
+results_file = os.path.join('results', args.save_str + '_vk_dets')
+spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
 
-# bbox, ypred, labels = testing('data/r4cnn_dets')
-# results_file = os.path.join('results', args.save_str + '_r4cnn_dets')
-# spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+bbox, ypred, labels = testing('data/r4cnn_dets')
+results_file = os.path.join('results', args.save_str + '_r4cnn_dets')
+spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
 
-# bbox, ypred, labels = testing('data/maskrcnn_dets')
-# results_file = os.path.join('results', args.save_str + '_maskrcnn_dets')
-# spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
+bbox, ypred, labels = testing('data/maskrcnn_dets')
+results_file = os.path.join('results', args.save_str + '_maskrcnn_dets')
+spio.savemat(results_file, {'bbox': bbox, 'ypred': ypred, 'labels': labels})
 
 bbox, ypred, labels = testing('data/maskrcnn_dets_nofinetune')
 results_file = os.path.join('results', args.save_str + '_maskrcnn_dets_nofinetune')
