@@ -133,9 +133,12 @@ def testing(det_path):
 		tmp_label = torch.split(label, args.batch_size)
 		for j in range(len(tmp_xdata)):
 			output = model(tmp_xdata[j], tmp_label[j])
-			ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
-			ypred_res = output[1].data.cpu().numpy()
-			tmp_ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
+			if args.model_type == 'bd':
+				ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+				ypred_res = output[1].data.cpu().numpy()
+				tmp_ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
+			else:
+				tmp_ypred.append(output.data.cpu().numpy())
 			del output
 		ypred.append(np.concatenate(tmp_ypred))
 		bbox.append(sample['bbox'].numpy())
