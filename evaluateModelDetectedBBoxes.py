@@ -92,18 +92,38 @@ class RegressionModel(nn.Module):
 		return y
 
 
-if args.model_type == 'bd':
+class ClassificationModel(nn.Module):
+	def __init__(self, dict_size):
+		super().__init__()
+		self.num_classes = num_classes
+		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
+		self.pose_models = nn.ModuleList([model_3layer(args.N0, args.N1, args.N2, dict_size) for i in range(self.num_classes)]).cuda()
+
+	def forward(self, x, label):
+		x = self.feature_model(x)
+		x = torch.stack([self.pose_models[i](x) for i in range(self.num_classes)]).permute(1, 2, 0)
+		label = torch.zeros(label.size(0), self.num_classes).scatter_(1, label.data.cpu(), 1.0)
+		label = Variable(label.unsqueeze(2).cuda())
+		y = torch.squeeze(torch.bmm(x, label), 2)
+		del x, label
+		return y
+
+
+if args.model_type == 'bd' or args.model_type == 'c':
 	# kmeans data
 	kmeans_file = 'data/kmeans_dictionary_axis_angle_' + str(args.dict_size) + '.pkl'
 	kmeans = pickle.load(open(kmeans_file, 'rb'))
 	kmeans_dict = kmeans.cluster_centers_
 	num_clusters = kmeans.n_clusters
 
-	# my_model
-	if not args.multires:
-		model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+	if args.type == 'c':
+		model = ClassificationModel(num_clusters)
 	else:
-		model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
+		# my_model
+		if not args.multires:
+			model = OneBinDeltaModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, ndim)
+		else:
+			model = OneDeltaPerBinModel(args.feature_network, num_classes, num_clusters, args.N0, args.N1, args.N2, args.N3, ndim)
 else:
 	model = RegressionModel()
 
@@ -137,6 +157,9 @@ def testing(det_path):
 				ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
 				ypred_res = output[1].data.cpu().numpy()
 				tmp_ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
+			elif args.model_type == 'c':
+				ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+				tmp_ypred.append(kmeans_dict[ypred_bin, :])
 			else:
 				tmp_ypred.append(output.data.cpu().numpy())
 			del output
