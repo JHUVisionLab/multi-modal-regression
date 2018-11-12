@@ -116,7 +116,7 @@ if args.model_type == 'bd' or args.model_type == 'c':
 	kmeans_dict = kmeans.cluster_centers_
 	num_clusters = kmeans.n_clusters
 
-	if args.type == 'c':
+	if args.model_type == 'c':
 		model = ClassificationModel(num_clusters)
 	else:
 		# my_model
@@ -158,7 +158,7 @@ def testing(det_path):
 				ypred_res = output[1].data.cpu().numpy()
 				tmp_ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
 			elif args.model_type == 'c':
-				ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+				ypred_bin = np.argmax(output.data.cpu().numpy(), axis=1)
 				tmp_ypred.append(kmeans_dict[ypred_bin, :])
 			else:
 				tmp_ypred.append(output.data.cpu().numpy())
