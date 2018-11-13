@@ -141,11 +141,15 @@ class TestImages(Dataset):
 class RegressionModel(nn.Module):
 	def __init__(self):
 		super().__init__()
+		self.num_classes = num_classes
 		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
-		self.pose_model = model_3layer(N0, N1, N2, ndim).cuda()
+		self.pose_model = model_3layer(N0+num_classes, N1, N2, ndim).cuda()
 
-	def forward(self, x):
+	def forward(self, x, label):
 		x = self.feature_model(x)
+		label = torch.zeros(label.size(0), self.num_classes).scatter_(1, label.data.cpu(), 1.0)
+		label = Variable(label.cuda())
+		x = torch.cat((x, label), dim=1)
 		x = self.pose_model(x)
 		x = np.pi * F.tanh(x)
 		return x

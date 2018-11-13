@@ -171,13 +171,17 @@ class OneDeltaPerBinModel(nn.Module):
 	def __init__(self):
 		super().__init__()
 		self.ndim = ndim
+		self.num_classes = num_classes
 		self.num_clusters = args.dict_size
 		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
-		self.bin_model = bin_3layer(N0, N1, N2, num_clusters).cuda()
-		self.res_models = nn.ModuleList([res_2layer(N0, N3, ndim) for i in range(self.num_clusters)]).cuda()
+		self.bin_model = bin_3layer(N0+num_classes, N1, N2, num_clusters).cuda()
+		self.res_models = nn.ModuleList([res_2layer(N0+num_classes, N3, ndim) for i in range(self.num_clusters)]).cuda()
 
-	def forward(self, x):
+	def forward(self, x, label):
 		x = self.feature_model(x)
+		label = torch.zeros(label.size(0), self.num_classes).scatter_(1, label.data.cpu(), 1.0)
+		label = Variable(label.cuda())
+		x = torch.cat((x, label), dim=1)
 		y1 = self.bin_model(x)
 		y2 = torch.stack([self.res_models[i](x) for i in range(self.num_clusters)])
 		y2 = y2.view(self.num_clusters, -1, self.ndim).permute(1, 2, 0)
