@@ -199,8 +199,9 @@ def training():
 		# forward steps
 		# output
 		xdata = Variable(sample['xdata'].cuda())
+		label = Variable(sample['label']).cuda()
 		ydata = Variable(sample['ydata_bin']).cuda()
-		output = model(xdata)
+		output = model(xdata, label)
 		# loss
 		loss = ce_loss(output, ydata)
 		# parameter updates
@@ -231,7 +232,7 @@ def testing():
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
-		output = model(xdata)
+		output = model(xdata, label)
 		ind = torch.argmax(output, dim=1).data.cpu().numpy()
 		ypred.append(kmeans_dict[ind, :])
 		ytrue.append(sample['ydata'].numpy())

@@ -232,9 +232,10 @@ def training_init():
 		# forward steps
 		# outputs
 		xdata = Variable(sample['xdata'].cuda())
+		label = Variable(sample['label']).cuda()
 		ydata_bin = Variable(sample['ydata_bin']).cuda()
 		ydata_res = Variable(sample['ydata_res']).cuda()
-		output = model(xdata)
+		output = model(xdata, label)
 		# loss
 		Lc = ce_loss(output[0], ydata_bin)
 		Lr = mse_loss(output[1], ydata_res)
@@ -268,9 +269,10 @@ def training():
 		# forward steps
 		# output
 		xdata = Variable(sample['xdata'].cuda())
+		label = Variable(sample['label']).cuda()
 		ydata_bin = Variable(sample['ydata_bin']).cuda()
 		ydata = Variable(sample['ydata']).cuda()
-		output = model(xdata)
+		output = model(xdata, label)
 		# loss
 		ind = torch.argmax(output[0], dim=1)
 		y = torch.index_select(cluster_centers_, 0, ind) + output[1]
@@ -307,7 +309,7 @@ def testing():
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
-		output = model(xdata)
+		output = model(xdata, label)
 		ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
 		ypred_res = output[1].data.cpu().numpy()
 		ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)

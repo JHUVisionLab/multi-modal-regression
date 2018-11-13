@@ -190,8 +190,9 @@ def training_init():
 		# forward steps
 		# outputs
 		xdata = Variable(sample['xdata'].cuda())
+		label = Variable(sample['label']).cuda()
 		ydata = Variable(sample['ydata']).cuda()
-		output = model(xdata)
+		output = model(xdata, label)
 		# loss
 		loss = mse_loss(output, ydata)
 		# parameter updates
@@ -221,8 +222,9 @@ def training():
 		# forward steps
 		# output
 		xdata = Variable(sample['xdata'].cuda())
+		label = Variable(sample['label']).cuda()
 		ydata = Variable(sample['ydata']).cuda()
-		output = model(xdata)
+		output = model(xdata, label)
 		# loss
 		loss = gve_loss(output, ydata)
 		# parameter updates
@@ -253,7 +255,7 @@ def testing():
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
-		output = model(xdata)
+		output = model(xdata, label)
 		ypred.append(output.data.cpu().numpy())
 		ytrue.append(sample['ydata'].numpy())
 		labels.append(sample['label'].numpy())
