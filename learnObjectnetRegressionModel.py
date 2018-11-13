@@ -64,7 +64,7 @@ preprocess = transforms.Compose([transforms.Resize([224, 224]), transforms.ToTen
 
 class TrainImages(Dataset):
 	def __init__(self):
-		self.db_path = db_path
+		self.db_path = train_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.list_image_names = []
@@ -104,7 +104,7 @@ class TrainImages(Dataset):
 
 class TestImages(Dataset):
 	def __init__(self):
-		self.db_path = db_path
+		self.db_path = test_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.list_image_names = []
@@ -134,6 +134,7 @@ class TestImages(Dataset):
 		ydata = torch.from_numpy(tmpy).float()
 		label = label*torch.ones(1).long()
 		sample = {'xdata': xdata, 'ydata': ydata, 'label': label}
+		# print(xdata.size(), ydata.size(), label.size())
 		return sample
 
 
@@ -168,7 +169,7 @@ print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
 model = RegressionModel()
 # print(model)
 # loss and optimizer
-optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
+optimizer = optim.Adam(model.parameters(), lr=init_lr)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
 # store stuff
 writer = SummaryWriter(log_dir)
@@ -244,6 +245,7 @@ def testing():
 	ypred = []
 	ytrue = []
 	labels = []
+	bar = progressbar.ProgressBar(max_value=len(test_loader))
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
@@ -253,6 +255,7 @@ def testing():
 		labels.append(sample['label'].numpy())
 		del xdata, label, output, sample
 		gc.collect()
+		bar.update(i+1)
 	ypred = np.concatenate(ypred)
 	ytrue = np.concatenate(ytrue)
 	labels = np.concatenate(labels)

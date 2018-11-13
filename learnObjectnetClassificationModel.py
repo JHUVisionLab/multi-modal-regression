@@ -33,6 +33,7 @@ parser = argparse.ArgumentParser(description='Objectnet Models')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--save_str', type=str)
 parser.add_argument('--num_epochs', type=int, default=3)
+parser.add_argument('--dict_size', type=int, default=200)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -73,7 +74,7 @@ preprocess = transforms.Compose([transforms.Resize([224, 224]), transforms.ToTen
 
 class TrainImages(Dataset):
 	def __init__(self):
-		self.db_path = db_path
+		self.db_path = train_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.list_image_names = []
@@ -103,8 +104,9 @@ class TrainImages(Dataset):
 			ydata.append(tmpy)
 		xdata = torch.stack(xdata)
 		ydata = np.stack(ydata)
-		ydata_bin = torch.from_numpy(kmeans.predict(ydata)).float().squeeze()
-		ydata = torch.from_numpy(ydata).float().squeeze()
+		ydata_bin = kmeans.predict(ydata)
+		ydata_bin = torch.from_numpy(ydata_bin).long()
+		ydata = torch.from_numpy(ydata).float()
 		label = torch.stack(label)
 		sample = {'xdata': xdata, 'ydata': ydata, 'label': label, 'ydata_bin': ydata_bin}
 		return sample
@@ -115,7 +117,7 @@ class TrainImages(Dataset):
 
 class TestImages(Dataset):
 	def __init__(self):
-		self.db_path = db_path
+		self.db_path = test_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.list_image_names = []
@@ -148,16 +150,15 @@ class TestImages(Dataset):
 		return sample
 
 
-class RegressionModel(nn.Module):
+class ClassificationModel(nn.Module):
 	def __init__(self):
 		super().__init__()
 		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
-		self.pose_model = model_3layer(N0, N1, N2, ndim).cuda()
+		self.pose_model = model_3layer(N0, N1, N2, args.dict_size).cuda()
 
 	def forward(self, x):
 		x = self.feature_model(x)
 		x = self.pose_model(x)
-		x = np.pi * F.tanh(x)
 		return x
 
 
@@ -176,10 +177,10 @@ test_loader = DataLoader(test_data, batch_size=32)
 print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
 
 # my_model
-model = RegressionModel()
+model = ClassificationModel()
 # print(model)
 # loss and optimizer
-optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
+optimizer = optim.Adam(model.parameters(), lr=init_lr)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
 # store stuff
 writer = SummaryWriter(log_dir)
@@ -224,6 +225,7 @@ def testing():
 	ypred = []
 	ytrue = []
 	labels = []
+	bar = progressbar.ProgressBar(max_value=len(test_loader))
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
@@ -234,6 +236,7 @@ def testing():
 		labels.append(sample['label'].numpy())
 		del xdata, label, output, sample
 		gc.collect()
+		bar.update(i+1)
 	ypred = np.concatenate(ypred)
 	ytrue = np.concatenate(ytrue)
 	labels = np.concatenate(labels)
