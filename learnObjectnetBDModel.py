@@ -12,10 +12,11 @@ from torchvision import transforms
 from dataGenerators import my_collate
 from axisAngle import get_error2, geodesic_loss, get_y
 from featureModels import resnet_model
-from poseModels import model_3layer
+from binDeltaModels import bin_3layer, res_3layer, res_2layer
 from helperFunctions import parse_name, rotation_matrix
 
 import numpy as np
+import math
 import scipy.io as spio
 import gc
 import os
@@ -30,8 +31,9 @@ from PIL import Image
 parser = argparse.ArgumentParser(description='Objectnet Models')
 parser.add_argument('--gpu_id', type=str, default='0')
 parser.add_argument('--save_str', type=str)
-parser.add_argument('--num_epochs', type=int, default=3)
 parser.add_argument('--dict_size', type=int, default=200)
+parser.add_argument('--num_epochs', type=int, default=3)
+parser.add_argument('--multires', type=bool, default=False)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -99,14 +101,15 @@ class TrainImages(Dataset):
 			_, _, az, el, ct, _ = parse_name(image_name)
 			R = rotation_matrix(az, el, ct)
 			tmpy = get_y(R)
-			ydata.append(tmpy)
+			ydata.append(torch.from_numpy(tmpy).float())
 		xdata = torch.stack(xdata)
-		ydata = np.stack(ydata)
-		ydata_bin = kmeans.predict(ydata)
+		ydata = torch.stack(ydata)
+		ydata_bin = kmeans.predict(ydata.numpy())
+		ydata_res = ydata.numpy() - kmeans_dict[ydata_bin, :]
 		ydata_bin = torch.from_numpy(ydata_bin).long()
-		ydata = torch.from_numpy(ydata).float()
+		ydata_res = torch.from_numpy(ydata_res).float()
 		label = torch.stack(label)
-		sample = {'xdata': xdata, 'ydata': ydata, 'label': label, 'ydata_bin': ydata_bin}
+		sample = {'xdata': xdata, 'ydata': ydata, 'label': label, 'ydata_bin': ydata_bin, 'ydata_res': ydata_res}
 		return sample
 
 	def shuffle_images(self):
@@ -115,7 +118,7 @@ class TrainImages(Dataset):
 
 class TestImages(Dataset):
 	def __init__(self):
-		self.db_path = test_path
+		self.db_path = db_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.list_image_names = []
@@ -148,16 +151,41 @@ class TestImages(Dataset):
 		return sample
 
 
-class ClassificationModel(nn.Module):
+class OneBinDeltaModel(nn.Module):
 	def __init__(self):
 		super().__init__()
+		self.num_clusters = args.dict_size
 		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
-		self.pose_model = model_3layer(N0, N1, N2, args.dict_size).cuda()
+		self.bin_model = bin_3layer(N0, N1, N2, self.num_clusters).cuda()
+		self.res_model = res_3layer(N0, N1, N2, ndim).cuda()
 
 	def forward(self, x):
 		x = self.feature_model(x)
-		x = self.pose_model(x)
-		return x
+		y1 = self.bin_model(x)
+		y2 = self.res_model(x)
+		del x
+		return [y1, y2]
+
+
+class OneDeltaPerBinModel(nn.Module):
+	def __init__(self):
+		super().__init__()
+		self.num_clusters = args.dict_size
+		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
+		self.bin_model = bin_3layer(N0, N1, N2, num_clusters).cuda()
+		self.res_models = nn.ModuleList([res_2layer(N0, N3, ndim) for i in range(self.num_clusters)]).cuda()
+
+	def forward(self, x):
+		x = self.feature_model(x)
+		y1 = self.bin_model(x)
+		y2 = torch.stack([self.res_models[i](x) for i in range(self.num_clusters)])
+		y2 = y2.view(self.num_clusters, -1, self.ndim).permute(1, 2, 0)
+		pose_label = torch.argmax(y1, dim=1, keepdim=True)
+		pose_label = torch.zeros(pose_label.size(0), self.num_clusters).scatter_(1, pose_label.data.cpu(), 1.0)
+		pose_label = Variable(pose_label.unsqueeze(2).cuda())
+		y2 = torch.squeeze(torch.bmm(y2, pose_label), 2)
+		del x, pose_label
+		return [y1, y2]
 
 
 # loss
@@ -175,37 +203,46 @@ test_loader = DataLoader(test_data, batch_size=32)
 print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
 
 # my_model
-model = ClassificationModel()
+if not args.multires:
+	model = OneBinDeltaModel()
+else:
+	model = OneDeltaPerBinModel()
 # print(model)
 # loss and optimizer
 optimizer = optim.Adam(model.parameters(), lr=init_lr)
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
+# scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
 # store stuff
 writer = SummaryWriter(log_dir)
 count = 0
 val_loss = []
+s = 0
 
 
 # OPTIMIZATION functions
-def training():
-	global count, val_loss
+def training_init():
+	global count, val_loss, s
 	model.train()
 	bar = progressbar.ProgressBar(max_value=len(train_loader))
 	for i, sample in enumerate(train_loader):
 		# forward steps
-		# output
+		# outputs
 		xdata = Variable(sample['xdata'].cuda())
-		ydata = Variable(sample['ydata_bin']).cuda()
+		ydata_bin = Variable(sample['ydata_bin']).cuda()
+		ydata_res = Variable(sample['ydata_res']).cuda()
 		output = model(xdata)
 		# loss
-		loss = ce_loss(output, ydata)
+		Lc = ce_loss(output[0], ydata_bin)
+		Lr = mse_loss(output[1], ydata_res)
+		loss = Lc + 0.5*math.exp(-2*s)*Lr + s
 		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
+		s = 0.5*math.log(Lr)
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
+		writer.add_scalar('alpha', 0.5*math.exp(-2*s), count)
 		if i % 1000 == 0:
 			ytest, yhat_test, test_labels = testing()
 			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
@@ -213,7 +250,45 @@ def training():
 			writer.add_scalar('val_loss', tmp_val_loss, count)
 			val_loss.append(tmp_val_loss)
 		# cleanup
-		del output, sample, loss, xdata, ydata
+		del xdata, ydata_bin, ydata_res, output, loss, Lc, Lr
+		bar.update(i)
+	train_loader.dataset.shuffle_images()
+
+
+def training():
+	global count, val_loss, s
+	model.train()
+	bar = progressbar.ProgressBar(max_value=len(train_loader))
+	for i, sample in enumerate(train_loader):
+		# forward steps
+		# output
+		xdata = Variable(sample['xdata'].cuda())
+		ydata_bin = Variable(sample['ydata_bin']).cuda()
+		ydata = Variable(sample['ydata']).cuda()
+		output = model(xdata)
+		# loss
+		ind = torch.argmax(output[0], dim=1)
+		y = torch.index_select(cluster_centers_, 0, ind) + output[1]
+		Lc = ce_loss(output[0], ydata_bin)
+		Lr = gve_loss(y, ydata)
+		loss = Lc + math.exp(-s)*Lr + s
+		# parameter updates
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
+		s = math.log(Lr)
+		# store
+		count += 1
+		writer.add_scalar('train_loss', loss.item(), count)
+		writer.add_scalar('alpha', math.exp(-s), count)
+		if i % 1000 == 0:
+			ytest, yhat_test, test_labels = testing()
+			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
+			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
+			writer.add_scalar('val_loss', tmp_val_loss, count)
+			val_loss.append(tmp_val_loss)
+		# cleanup
+		del xdata, ydata_bin, ydata, output, y, Lr, Lc, loss, ind
 		bar.update(i)
 	train_loader.dataset.shuffle_images()
 
@@ -223,18 +298,18 @@ def testing():
 	ypred = []
 	ytrue = []
 	labels = []
-	bar = progressbar.ProgressBar(max_value=len(test_loader))
+	bar = progressbar.ProgressBar(max_value=len(train_loader))
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
 		output = model(xdata)
-		ind = torch.argmax(output, dim=1).data.cpu().numpy()
-		ypred.append(kmeans_dict[ind, :])
+		ypred_bin = np.argmax(output[0].data.cpu().numpy(), axis=1)
+		ypred_res = output[1].data.cpu().numpy()
+		ypred.append(kmeans_dict[ypred_bin, :] + ypred_res)
 		ytrue.append(sample['ydata'].numpy())
 		labels.append(sample['label'].numpy())
 		del xdata, label, output, sample
 		gc.collect()
-		bar.update(i+1)
 	ypred = np.concatenate(ypred)
 	ytrue = np.concatenate(ytrue)
 	labels = np.concatenate(labels)
@@ -246,6 +321,12 @@ def save_checkpoint(filename):
 	torch.save(model.state_dict(), filename)
 
 
+# initialization
+training_init()
+ytest, yhat_test, test_labels = testing()
+print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
+
+s = 0  # reset
 for epoch in range(args.num_epochs):
 	tic = time.time()
 	# scheduler.step()
