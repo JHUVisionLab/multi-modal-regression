@@ -206,7 +206,7 @@ def training():
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
-		if i % 1000 == 0:
+		if i % 7000 == 0:
 			ytest, yhat_test, test_labels = testing()
 			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
@@ -214,7 +214,7 @@ def training():
 			val_loss.append(tmp_val_loss)
 		# cleanup
 		del output, sample, loss, xdata, ydata
-		bar.update(i)
+		bar.update(i+1)
 	train_loader.dataset.shuffle_images()
 
 

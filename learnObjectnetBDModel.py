@@ -118,7 +118,7 @@ class TrainImages(Dataset):
 
 class TestImages(Dataset):
 	def __init__(self):
-		self.db_path = db_path
+		self.db_path = test_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.list_image_names = []
@@ -170,6 +170,7 @@ class OneBinDeltaModel(nn.Module):
 class OneDeltaPerBinModel(nn.Module):
 	def __init__(self):
 		super().__init__()
+		self.ndim = ndim
 		self.num_clusters = args.dict_size
 		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
 		self.bin_model = bin_3layer(N0, N1, N2, num_clusters).cuda()
@@ -243,7 +244,7 @@ def training_init():
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
 		writer.add_scalar('alpha', 0.5*math.exp(-2*s), count)
-		if i % 1000 == 0:
+		if i % 7000 == 0:
 			ytest, yhat_test, test_labels = testing()
 			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
@@ -251,7 +252,7 @@ def training_init():
 			val_loss.append(tmp_val_loss)
 		# cleanup
 		del xdata, ydata_bin, ydata_res, output, loss, Lc, Lr
-		bar.update(i)
+		bar.update(i+1)
 	train_loader.dataset.shuffle_images()
 
 
@@ -281,7 +282,7 @@ def training():
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
 		writer.add_scalar('alpha', math.exp(-s), count)
-		if i % 1000 == 0:
+		if i % 7000 == 0:
 			ytest, yhat_test, test_labels = testing()
 			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
@@ -289,7 +290,7 @@ def training():
 			val_loss.append(tmp_val_loss)
 		# cleanup
 		del xdata, ydata_bin, ydata, output, y, Lr, Lc, loss, ind
-		bar.update(i)
+		bar.update(i+1)
 	train_loader.dataset.shuffle_images()
 
 
@@ -298,7 +299,7 @@ def testing():
 	ypred = []
 	ytrue = []
 	labels = []
-	bar = progressbar.ProgressBar(max_value=len(train_loader))
+	bar = progressbar.ProgressBar(max_value=len(test_loader))
 	for i, sample in enumerate(test_loader):
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label'].cuda())
@@ -310,6 +311,7 @@ def testing():
 		labels.append(sample['label'].numpy())
 		del xdata, label, output, sample
 		gc.collect()
+		bar.update(i+1)
 	ypred = np.concatenate(ypred)
 	ytrue = np.concatenate(ytrue)
 	labels = np.concatenate(labels)
