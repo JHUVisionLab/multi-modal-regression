@@ -41,11 +41,13 @@ end
 % start parallel processing
 poolobj = parpool(16);
 
-for k = 1:length(trainval_images)
+parfor k = 1:length(trainval_images)
+	fprintf('Train \t k: %d \n', k);
 	process_train_image(trainval_images{k}, image_dir, anno_dir, train_path);
 end
 
-for k = 1:length(test_images)
+parfor k = 1:length(test_images)
+	fprintf('Test \t k: %d \n', k);
 	process_test_image(test_images{k}, image_dir, anno_dir, test_path);
 end
 
@@ -88,8 +90,16 @@ for i = 1:length(objects)
 	bbox = object.bbox;
 	% get viewpoint info
 	viewpoint = object.viewpoint;
-	if isempty(viewpoint.azimuth), az = viewpoint.azimuth_coarse; else, az = viewpoint.azimuth; end
-	if isempty(viewpoint.elevation), el = viewpoint.elevation_coarse; else, el = viewpoint.elevation; end
+	if ~isfield(viewpoint, 'azimuth') || isempty(viewpoint.azimuth) 
+		az = viewpoint.azimuth_coarse; 
+	else 
+		az = viewpoint.azimuth; 
+	end
+	if ~isfield(viewpoint, 'elevation') || isempty(viewpoint.elevation) 
+		el = viewpoint.elevation_coarse; 
+	else 
+		el = viewpoint.elevation; 
+	end
 	ct = viewpoint.theta;
 	d = viewpoint.distance;
 	patch = get_patch(bbox, img);
@@ -115,8 +125,16 @@ for i = 1:length(objects)
 	bbox = object.bbox;
 	% get viewpoint info
 	viewpoint = object.viewpoint;
-	if isempty(viewpoint.azimuth), az = viewpoint.azimuth_coarse; else, az = viewpoint.azimuth; end
-	if isempty(viewpoint.elevation), el = viewpoint.elevation_coarse; else, el = viewpoint.elevation; end
+	if ~isfield(viewpoint, 'azimuth') || isempty(viewpoint.azimuth) 
+		az = viewpoint.azimuth_coarse; 
+	else 
+		az = viewpoint.azimuth; 
+	end
+	if ~isfield(viewpoint, 'elevation') || isempty(viewpoint.elevation) 
+		el = viewpoint.elevation_coarse; 
+	else 
+		el = viewpoint.elevation; 
+	end
 	ct = viewpoint.theta;
 	d = viewpoint.distance;
 	patch = get_patch(bbox, img);
