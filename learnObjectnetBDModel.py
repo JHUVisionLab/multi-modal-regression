@@ -47,7 +47,7 @@ log_dir = os.path.join('logs', args.save_str)
 
 # constants
 N0, N1, N2, N3, ndim = 2048, 1000, 500, 100, 3
-init_lr = 1e-4
+init_lr = 1e-5
 num_workers = 1
 
 # paths
@@ -73,8 +73,8 @@ preprocess = transforms.Compose([transforms.Resize([224, 224]), transforms.ToTen
 
 
 class TrainImages(Dataset):
-	def __init__(self):
-		self.db_path = train_path
+	def __init__(self, data_path):
+		self.db_path = data_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.list_image_names = []
@@ -117,8 +117,8 @@ class TrainImages(Dataset):
 
 
 class TestImages(Dataset):
-	def __init__(self):
-		self.db_path = test_path
+	def __init__(self, data_path):
+		self.db_path = data_path
 		self.classes = classes
 		self.num_classes = len(self.classes)
 		self.list_image_names = []
@@ -145,9 +145,13 @@ class TestImages(Dataset):
 		_, _, az, el, ct, _ = parse_name(image_name)
 		R = rotation_matrix(az, el, ct)
 		tmpy = get_y(R)
+		ydata_bin = kmeans.predict(tmpy)
+		ydata_res = tmpy - kmeans_dict[ydata_bin, :]
+		ydata_bin = ydata_bin*torch.ones(1).long()
+		ydata_res = torch.from_numpy(ydata_res).float()
 		ydata = torch.from_numpy(tmpy).float()
 		label = label*torch.ones(1).long()
-		sample = {'xdata': xdata, 'ydata': ydata, 'label': label}
+		sample = {'xdata': xdata, 'ydata': ydata, 'label': label, 'ydata_bin': ydata_bin, 'ydata_res': ydata_res}
 		return sample
 
 
@@ -200,10 +204,12 @@ gve_loss = geodesic_loss().cuda()
 
 # DATA
 # datasets
-train_data = TrainImages()
-test_data = TestImages()
+# train_data = TrainImages(train_path)
+train_data = TestImages(train_path)
+test_data = TestImages(test_path)
 # setup data loaders
-train_loader = DataLoader(train_data, batch_size=num_workers, shuffle=True, num_workers=4, pin_memory=True, collate_fn=my_collate)
+# train_loader = DataLoader(train_data, batch_size=num_workers, shuffle=True, num_workers=4, pin_memory=True, collate_fn=my_collate)
+train_loader = DataLoader(train_data, batch_size=96, num_workers=4, shuffle=True, pin_memory=True)
 test_loader = DataLoader(test_data, batch_size=32)
 print('Train: {0} \t Test: {1}'.format(len(train_loader), len(test_loader)))
 
