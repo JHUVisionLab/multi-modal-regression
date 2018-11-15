@@ -34,6 +34,7 @@ parser.add_argument('--save_str', type=str)
 parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--num_epochs', type=int, default=3)
 parser.add_argument('--multires', type=bool, default=False)
+parser.add_argument('--init_lr', type=float, default=1e-4)
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -47,11 +48,9 @@ log_dir = os.path.join('logs', args.save_str)
 
 # constants
 N0, N1, N2, N3, ndim = 2048, 1000, 500, 100, 3
-init_lr = 1e-5
-num_workers = 1
 
 # paths
-db_path = 'data/objectnet'
+db_path = 'data/objectnet_new'
 train_path = os.path.join(db_path, 'train')
 test_path = os.path.join(db_path, 'test')
 
@@ -145,7 +144,7 @@ class TestImages(Dataset):
 		_, _, az, el, ct, _ = parse_name(image_name)
 		R = rotation_matrix(az, el, ct)
 		tmpy = get_y(R)
-		ydata_bin = kmeans.predict(tmpy)
+		ydata_bin = np.squeeze(kmeans.predict(np.expand_dims(tmpy,0)))
 		ydata_res = tmpy - kmeans_dict[ydata_bin, :]
 		ydata_bin = ydata_bin*torch.ones(1).long()
 		ydata_res = torch.from_numpy(ydata_res).float()
@@ -220,8 +219,9 @@ else:
 	model = OneDeltaPerBinModel()
 # print(model)
 # loss and optimizer
-optimizer = optim.Adam(model.parameters(), lr=init_lr)
+optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
 # scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
+scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: 1/(1+ep))
 # store stuff
 writer = SummaryWriter(log_dir)
 count = 0
@@ -239,7 +239,7 @@ def training_init():
 		# outputs
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label']).cuda()
-		ydata_bin = Variable(sample['ydata_bin']).cuda()
+		ydata_bin = Variable(sample['ydata_bin']).cuda().squeeze()
 		ydata_res = Variable(sample['ydata_res']).cuda()
 		output = model(xdata, label)
 		# loss
@@ -255,16 +255,16 @@ def training_init():
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
 		writer.add_scalar('alpha', 0.5*math.exp(-2*s), count)
-		if i % 7000 == 0:
-			ytest, yhat_test, test_labels = testing()
-			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
-			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
-			writer.add_scalar('val_loss', tmp_val_loss, count)
-			val_loss.append(tmp_val_loss)
+		#if i % 1000 == 0:
+		#	ytest, yhat_test, test_labels = testing()
+		#	spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
+		#	tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
+		#	writer.add_scalar('val_loss', tmp_val_loss, count)
+		#	val_loss.append(tmp_val_loss)
 		# cleanup
 		del xdata, ydata_bin, ydata_res, output, loss, Lc, Lr
 		bar.update(i+1)
-	train_loader.dataset.shuffle_images()
+	#train_loader.dataset.shuffle_images()
 
 
 def training():
@@ -276,7 +276,7 @@ def training():
 		# output
 		xdata = Variable(sample['xdata'].cuda())
 		label = Variable(sample['label']).cuda()
-		ydata_bin = Variable(sample['ydata_bin']).cuda()
+		ydata_bin = Variable(sample['ydata_bin']).cuda().squeeze()
 		ydata = Variable(sample['ydata']).cuda()
 		output = model(xdata, label)
 		# loss
@@ -294,16 +294,16 @@ def training():
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
 		writer.add_scalar('alpha', math.exp(-s), count)
-		if i % 7000 == 0:
-			ytest, yhat_test, test_labels = testing()
-			spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
-			tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
-			writer.add_scalar('val_loss', tmp_val_loss, count)
-			val_loss.append(tmp_val_loss)
+		#if i % 1000 == 0:
+		#	ytest, yhat_test, test_labels = testing()
+		#	spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
+		#	tmp_val_loss = get_error2(ytest, yhat_test, test_labels, num_classes)
+		#	writer.add_scalar('val_loss', tmp_val_loss, count)
+		#	val_loss.append(tmp_val_loss)
 		# cleanup
 		del xdata, ydata_bin, ydata, output, y, Lr, Lc, loss, ind
 		bar.update(i+1)
-	train_loader.dataset.shuffle_images()
+	#train_loader.dataset.shuffle_images()
 
 
 def testing():
@@ -343,14 +343,17 @@ print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_class
 s = 0  # reset
 for epoch in range(args.num_epochs):
 	tic = time.time()
-	# scheduler.step()
+	scheduler.step()
 	# training step
 	training()
 	# save model at end of epoch
 	save_checkpoint(model_file)
 	# validation
 	ytest, yhat_test, test_labels = testing()
-	print('\nMedErr: {0}'.format(get_error2(ytest, yhat_test, test_labels, num_classes)))
+	tmp = get_error2(ytest, yhat_test, test_labels, num_classes)
+	val_loss.append(tmp)
+	print('\nMedErr: {0}'.format(tmp))
+	spio.savemat(results_file, {'ytest': ytest, 'yhat_test': yhat_test, 'test_labels': test_labels})
 	# time and output
 	toc = time.time() - tic
 	print('Epoch: {0} done in time {1}s'.format(epoch, toc))
