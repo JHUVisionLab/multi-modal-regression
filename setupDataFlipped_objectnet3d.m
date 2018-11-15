@@ -160,6 +160,7 @@ function patch = get_patch(bbox, img)
 x1 = max(1, round(bbox(1))); x2 = min(nC, round(bbox(3)));
 y1 = max(1, round(bbox(2))); y2 = min(nR, round(bbox(4)));
 patch = img(y1:y2, x1:x2, :);
+if size(patch, 3)==1, patch=cat(3, patch, patch, patch); end
 % resize if necessary
 scale = [size(patch, 1)/224, size(patch, 2)/224];
 if any(scale>1), patch = imresize(patch, 1/max(scale)); end
