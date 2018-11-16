@@ -98,7 +98,7 @@ def training():
 		ydata = Variable(sample['ydata_bin']).cuda()
 		output = model(xdata, label)
 		# loss
-		loss = ce_loss(output, ydata)
+		loss = ce_loss(output, ydata.squeeze())
 		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
@@ -109,7 +109,6 @@ def training():
 		# cleanup
 		del output, sample, loss, xdata, ydata
 		bar.update(i+1)
-	train_loader.dataset.shuffle_images()
 
 
 def testing():

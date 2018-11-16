@@ -155,13 +155,17 @@ class res_2layer(nn.Module):
 class OneBinDeltaModel(nn.Module):
 	def __init__(self, num_classes, dict_size=200, n0=2048, n1=1000, n2=500, dim=3):
 		super().__init__()
+		self.num_classes = num_classes
 		self.num_clusters = dict_size
 		self.feature_model = resnet_model('resnet50', 'layer4').cuda()
 		self.bin_model = bin_3layer(n0+num_classes, n1, n2, self.num_clusters).cuda()
 		self.res_model = res_3layer(n0+num_classes, n1, n2, dim).cuda()
 
-	def forward(self, x):
+	def forward(self, x, label):
 		x = self.feature_model(x)
+		label = torch.zeros(label.size(0), self.num_classes).scatter_(1, label.data.cpu(), 1.0)
+		label = Variable(label.cuda())
+		x = torch.cat((x, label), dim=1)
 		y1 = self.bin_model(x)
 		y2 = self.res_model(x)
 		del x
