@@ -4,8 +4,8 @@ function setupDataFlipped_objectnet3d
 clear; clc;
 
 % paths and variables
-db_path = '/cis/data/msid_io4/objectnet3d';
-save_dir = 'data/objectnet_new';		% where all this will be stored. change or setup a symbolic link if necessary
+db_path = 'data/objectnet3d';
+save_dir = fullfile(db_path, 'flipped');		% where all this will be stored. change or setup a symbolic link if necessary
 anno_dir = fullfile(db_path, 'Annotations');
 image_dir = fullfile(db_path, 'Images');
 sets_path = fullfile(db_path, 'Image_sets');
@@ -19,13 +19,13 @@ classes = tmp{1};
 num_classes = length(classes);
 
 % get trainval images
-fid = fopen(fullfile(sets_path, 'trainval.txt'), 'r');
+fid = fopen(fullfile(sets_path, 'train.txt'), 'r');
 tmp = textscan(fid, '%s');
 fclose(fid);
-trainval_images = tmp{1};
+train_images = tmp{1};
 
 % get test images
-fid = fopen(fullfile(sets_path, 'test.txt'), 'r');
+fid = fopen(fullfile(sets_path, 'val.txt'), 'r');
 tmp = textscan(fid, '%s');
 fclose(fid);
 test_images = tmp{1};
@@ -41,9 +41,9 @@ end
 % start parallel processing
 poolobj = parpool(16);
 
-parfor k = 1:length(trainval_images)
+parfor k = 1:length(train_images)
 	fprintf('Train \t k: %d \n', k);
-	process_train_image(trainval_images{k}, image_dir, anno_dir, train_path);
+	process_train_image(train_images{k}, image_dir, anno_dir, train_path);
 end
 
 parfor k = 1:length(test_images)
@@ -55,7 +55,7 @@ end
 delete(poolobj);
 
 % store dataset info
-save(fullfile(save_dir, 'dbinfo'), 'classes', 'trainval_images', 'test_images');
+save(fullfile(save_dir, 'dbinfo'), 'classes', 'train_images', 'test_images');
 % store test-train image info per category
 for i = 1:num_classes
 	cls = classes{i};
@@ -107,17 +107,17 @@ for i = 1:length(objects)
 	% original path
 	patch = get_patch(bbox, img);
 	imwrite(patch, fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct, d)));
-	% rotate by 90-180-270
-	imwrite(imrotate(patch, 90), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-90, d)));
-	imwrite(imrotate(patch, 180), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-180, d)));
-	imwrite(imrotate(patch, 270), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-270, d)));
+% 	% rotate by 90-180-270
+% 	imwrite(imrotate(patch, 90), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-90, d)));
+% 	imwrite(imrotate(patch, 180), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-180, d)));
+% 	imwrite(imrotate(patch, 270), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-270, d)));
 	% flipped patch
 	patch_flipped = fliplr(patch);
 	imwrite(patch_flipped, fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct, d)));
-	% rotate by 90-180-270
-	imwrite(imrotate(patch_flipped, 90), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-90, d)));
-	imwrite(imrotate(patch_flipped, 180), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-180, d)));
-	imwrite(imrotate(patch_flipped, 270), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-270, d)));
+% 	% rotate by 90-180-270
+% 	imwrite(imrotate(patch_flipped, 90), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-90, d)));
+% 	imwrite(imrotate(patch_flipped, 180), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-180, d)));
+% 	imwrite(imrotate(patch_flipped, 270), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-270, d)));
 end
 
 function process_test_image(image_name, image_dir, anno_dir, test_path)
