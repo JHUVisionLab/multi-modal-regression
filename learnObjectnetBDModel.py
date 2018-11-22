@@ -30,6 +30,7 @@ parser.add_argument('--dict_size', type=int, default=200)
 parser.add_argument('--num_epochs', type=int, default=10)
 parser.add_argument('--multires', type=bool, default=False)
 parser.add_argument('--init_lr', type=float, default=1e-4)
+parser.add_argument('--db_path', type=str, default='data/objectnet3d/flipped')
 args = parser.parse_args()
 print(args)
 # assign GPU
@@ -45,12 +46,12 @@ log_dir = os.path.join('logs', args.save_str)
 N0, N1, N2, N3, ndim = 2048, 1000, 500, 100, 3
 
 # paths
-db_path = 'data/objectnet'
-train_path = os.path.join(db_path, 'train')
-test_path = os.path.join(db_path, 'test')
+# db_path = 'data/objectnet3d/flipped/'
+train_path = os.path.join(args.db_path, 'train')
+test_path = os.path.join(args.db_path, 'test')
 
 # classes
-tmp = spio.loadmat(os.path.join(db_path, 'dbinfo'), squeeze_me=True)
+tmp = spio.loadmat(os.path.join(args.db_path, 'dbinfo'), squeeze_me=True)
 classes = tmp['classes']
 num_classes = len(classes)
 
@@ -83,17 +84,16 @@ else:
 # print(model)
 # loss and optimizer
 optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
-scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: 1/(1+ep))
+scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: (10**-(ep//10))/(1+ep%10))
 # store stuff
 writer = SummaryWriter(log_dir)
 count = 0
 val_loss = []
-s = 0
 
 
 # OPTIMIZATION functions
 def training_init():
-	global count, s
+	global count
 	model.train()
 	bar = progressbar.ProgressBar(max_value=len(train_loader))
 	for i, sample in enumerate(train_loader):
@@ -107,23 +107,21 @@ def training_init():
 		# loss
 		Lc = ce_loss(output[0], ydata_bin)
 		Lr = mse_loss(output[1], ydata_res)
-		loss = Lc + 0.5*math.exp(-2*s)*Lr + s
+		loss = Lc + Lr
 		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
-		s = 0.5*math.log(Lr)
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
-		writer.add_scalar('alpha', 0.5*math.exp(-2*s), count)
 		# cleanup
 		del xdata, ydata_bin, ydata_res, output, loss, Lc, Lr
 		bar.update(i+1)
 
 
 def training():
-	global count, s
+	global count
 	model.train()
 	bar = progressbar.ProgressBar(max_value=len(train_loader))
 	for i, sample in enumerate(train_loader):
@@ -139,16 +137,14 @@ def training():
 		y = torch.index_select(cluster_centers_, 0, ind) + output[1]
 		Lc = ce_loss(output[0], ydata_bin)
 		Lr = gve_loss(y, ydata)
-		loss = Lc + math.exp(-s)*Lr + s
+		loss = Lc + 10*Lr
 		# parameter updates
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
-		s = math.log(Lr)
 		# store
 		count += 1
 		writer.add_scalar('train_loss', loss.item(), count)
-		writer.add_scalar('alpha', math.exp(-s), count)
 		# cleanup
 		del xdata, ydata_bin, ydata, output, y, Lr, Lc, loss, ind
 		bar.update(i+1)

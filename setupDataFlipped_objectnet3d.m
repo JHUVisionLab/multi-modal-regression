@@ -5,7 +5,7 @@ clear; clc;
 
 % paths and variables
 db_path = 'data/objectnet3d';
-save_dir = fullfile(db_path, 'flipped');		% where all this will be stored. change or setup a symbolic link if necessary
+save_dir = fullfile(db_path, 'augmented');		% where all this will be stored. change or setup a symbolic link if necessary
 anno_dir = fullfile(db_path, 'Annotations');
 image_dir = fullfile(db_path, 'Images');
 sets_path = fullfile(db_path, 'Image_sets');
@@ -107,17 +107,17 @@ for i = 1:length(objects)
 	% original path
 	patch = get_patch(bbox, img);
 	imwrite(patch, fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct, d)));
-% 	% rotate by 90-180-270
-% 	imwrite(imrotate(patch, 90), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-90, d)));
-% 	imwrite(imrotate(patch, 180), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-180, d)));
-% 	imwrite(imrotate(patch, 270), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-270, d)));
+ 	% rotate by 90-180-270
+ 	imwrite(imrotate(patch, 90), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-90, d)));
+ 	imwrite(imrotate(patch, 180), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-180, d)));
+ 	imwrite(imrotate(patch, 270), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, az, el, ct-270, d)));
 	% flipped patch
 	patch_flipped = fliplr(patch);
 	imwrite(patch_flipped, fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct, d)));
-% 	% rotate by 90-180-270
-% 	imwrite(imrotate(patch_flipped, 90), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-90, d)));
-% 	imwrite(imrotate(patch_flipped, 180), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-180, d)));
-% 	imwrite(imrotate(patch_flipped, 270), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-270, d)));
+ 	% rotate by 90-180-270
+ 	imwrite(imrotate(patch_flipped, 90), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-90, d)));
+ 	imwrite(imrotate(patch_flipped, 180), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-180, d)));
+ 	imwrite(imrotate(patch_flipped, 270), fullfile(save_location, sprintf('%s_%sobject%d_a%f_e%f_t%f_d%f.png', clsid, imageid, i, -az, el, -ct-270, d)));
 end
 
 function process_test_image(image_name, image_dir, anno_dir, test_path)

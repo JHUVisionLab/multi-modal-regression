@@ -40,7 +40,7 @@ log_dir = os.path.join('logs', args.save_str)
 N0, N1, N2, N3, ndim = 2048, 1000, 500, 100, 3
 
 # paths
-db_path = 'data/objectnet'
+db_path = 'data/objectnet3d/flipped/'
 train_path = os.path.join(db_path, 'train')
 test_path = os.path.join(db_path, 'test')
 
@@ -69,7 +69,7 @@ model = RegressionModel(num_classes)
 # print(model)
 # loss and optimizer
 optimizer = optim.Adam(model.parameters(), lr=args.init_lr)
-scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: 1/(1+ep))
+scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda ep: (10**-(ep//10))/(1+ep%10))
 # store stuff
 writer = SummaryWriter(log_dir)
 count = 0

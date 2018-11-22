@@ -71,7 +71,7 @@ gve_loss = geodesic_loss().cuda()
 # datasets
 real_data = GBDGenerator(args.augmented_path, 'real', kmeans_file)
 render_data = GBDGenerator(args.render_path, 'render', kmeans_file)
-train_data = render_data
+train_data = real_data
 test_data = TestImages(args.pascal3d_path)
 # setup data loaders
 train_loader = DataLoader(train_data, batch_size=args.num_workers, shuffle=True, num_workers=args.num_workers, pin_memory=True, collate_fn=my_collate)
